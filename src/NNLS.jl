@@ -117,7 +117,7 @@ Charles L. Lawson and Richard J. Hanson at Jet Propulsion Laboratory
 "SOLVING LEAST SQUARES PROBLEMS", Prentice-HalL, 1974.
 Revised FEB 1995 to accompany reprinting of the book by SIAM.
 """
-function solve_triangular_system(zz, A, idx, nsetp, jj)
+function solve_triangular_system!(zz, A, idx, nsetp, jj)
     for l in 1:nsetp
         ip = nsetp + 1 - l
         if (l != 1)
@@ -348,7 +348,7 @@ function nnls!{T, TI}(work::NNLSWorkspace{T, TI}, itermax::Integer=(3 * size(wor
 
         # SOLVE THE TRIANGULAR SYSTEM.   
         # STORE THE SOLUTION TEMPORARILY IN ZZ().
-        jj = solve_triangular_system(zz, A, idx, nsetp, jj)
+        jj = solve_triangular_system!(zz, A, idx, nsetp, jj)
 
         # ******  SECONDARY LOOP BEGINS HERE ******  
         # 
@@ -404,7 +404,7 @@ function nnls!{T, TI}(work::NNLSWorkspace{T, TI}, itermax::Integer=(3 * size(wor
                         cc, ss, sig = orthogonal_rotmat(A[j - 1, ii], A[j, ii])
                         A[j - 1, ii] = sig
                         A[j, ii] = 0
-                        for l in 1:n
+                        for l in one(TI):n
                             if l != ii
                                 # Apply procedure G2 (CC,SS,A(J-1,L),A(J,L))
                                 temp = A[j - 1, l]
@@ -444,7 +444,7 @@ function nnls!{T, TI}(work::NNLSWorkspace{T, TI}, itermax::Integer=(3 * size(wor
 
             # COPY B( ) INTO ZZ( ).  THEN SOLVE AGAIN AND LOOP BACK.
             zz .= b
-            jj = solve_triangular_system(zz, A, idx, nsetp, jj)
+            jj = solve_triangular_system!(zz, A, idx, nsetp, jj)
         end
         if terminated
             break
