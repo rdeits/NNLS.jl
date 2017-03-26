@@ -8,7 +8,7 @@ const pyopt_nnls = pyimport_conda("scipy.optimize", "scipy")[:nnls]
 function runbenchmarks()
     srand(1)
     println("M\tN\tt_nnls\tt_non_neg_least_squares")
-    for m in 10:20:90
+    for m in 10:20:70
         for n_over_m in [0.5, 1, 2]
             n = round(Int, m * n_over_m)
             inputs = [(randn(m, n), randn(m)) for i in 1:50]
