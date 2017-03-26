@@ -130,15 +130,15 @@ function solve_triangular_system(zz, A, idx, nsetp, jj)
 end
 
 type NNLSWorkspace{T, I <: Integer}
-    A::Matrix{T}
-    b::Vector{T}
+    QA::Matrix{T}
+    Qb::Vector{T}
     x::Vector{T}
     w::Vector{T}
     zz::Vector{T}
     idx::Vector{I}
     rnorm::T
     mode::I
-    hasdecomposition::Bool
+    nsetp::I
 end
 
 function NNLSWorkspace{T, I}(A::Matrix{T}, b::Vector{T}, indextype::Type{I}=Int)
@@ -153,7 +153,7 @@ function NNLSWorkspace{T, I}(A::Matrix{T}, b::Vector{T}, indextype::Type{I}=Int)
         zeros(I, n),  # idx
         zero(T),      # rnorm
         zero(I),      # mode
-        false         # hasdecomposition
+        zero(I),      # nsetp
     )
 end
 
@@ -175,15 +175,10 @@ Base.setindex!(v::UnsafeVectorView, value, idx) = unsafe_store!(v.ptr, value, id
 Base.length(v::UnsafeVectorView) = v.len
 Base.linearindexing{V <: UnsafeVectorView}(::Type{V}) = Base.LinearFast()
 
-function nnls{T}(A::DenseMatrix{T}, b::DenseVector{T}, itermax=(3 * size(A, 2)))
-    work = NNLSWorkspace(A, b)
-    nnls!(work, itermax)
-    work
-end
 
 @noinline function checkargs(work::NNLSWorkspace)
-    m, n = size(work.A)
-    @assert size(work.b) == (m,)
+    m, n = size(work.QA)
+    @assert size(work.Qb) == (m,)
     @assert size(work.x) == (n,)
     @assert size(work.w) == (n,)
     @assert size(work.zz) == (m,)
@@ -217,11 +212,11 @@ GIVEN AN M BY N MATRIX, A, AND AN M-VECTOR, B,  COMPUTE AN
 N-VECTOR, X, THAT SOLVES THE LEAST SQUARES PROBLEM   
                  A * X = B  SUBJECT TO X .GE. 0   
 """
-function nnls!{T, TI}(work::NNLSWorkspace{T, TI}, itermax::Integer=(3 * size(work.A, 2)))
+function nnls!{T, TI}(work::NNLSWorkspace{T, TI}, itermax::Integer=(3 * size(work.QA, 2)))
     checkargs(work)
 
-    A = work.A
-    b = work.b
+    A = work.QA
+    b = work.Qb
     x = work.x
     w = work.w
     zz = work.zz
@@ -472,38 +467,14 @@ function nnls!{T, TI}(work::NNLSWorkspace{T, TI}, itermax::Integer=(3 * size(wor
         w .= 0
     end
     work.rnorm = sqrt(sm)
-    work.hasdecomposition = true
-    resize!(work.b, nsetp)
-    resize!(work.idx, nsetp)
+    work.nsetp = nsetp
     return work.x
 end
 
-"""
-Uses the result of a previous NNLS computation to quickly compute
-additional NNLS solutions for the same A matrix. That is, if you 
-have done:
-
+function nnls{T}(A::DenseMatrix{T}, b::DenseVector{T}, itermax=(3 * size(A, 2)))
     work = NNLSWorkspace(A, b)
-    x = nnls!(work)
-
-then you can solve additional NNLS problems with the same A matrix
-but new b vectors by doing:
-
-    x2 = nnls(work, b2)
-    x3 = nnls(work, b3)
-
-which should be faster than re-solving the entire NNLS problem.
-
-Extracts the R matrix from the implicit QR decomposition computed as a
-by-product of the NNLS subroutine. See Method 3 of Chapter 24 of
-Lawson '74.
-"""
-function nnls{T}(work::NNLSWorkspace{T}, b::AbstractVector{T})
-    @assert work.hasdecomposition
-    x = zeros(work.x)
-    R = @view(work.A[1:length(work.idx), work.idx])
-    x[work.idx] = R \ work.b
-    x
+    nnls!(work, itermax)
+    work.x
 end
 
 end # module
