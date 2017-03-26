@@ -179,21 +179,6 @@ end
     end
 end
 
-# @testset "repeated nnls" begin
-#     srand(100)
-#     for i in 1:10000
-#         m = rand(20:80)
-#         n = rand(20:80)
-#         A = randn(m, n)
-#         b = randn(m)
-
-#         work = nnls(A, b)
-#         x1 = copy(work.x)
-#         x2 = nnls(work, b)
-#         @test x2 ≈ x1
-#     end
-# end
-
 @testset "non-Int Integer workspace" begin
     m = 10
     n = 20
