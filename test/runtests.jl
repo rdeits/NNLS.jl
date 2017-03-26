@@ -219,7 +219,7 @@ const pyopt = pyimport_conda("scipy.optimize", "scipy")
 
 @testset "nnls vs scipy" begin
     srand(5)
-    for i in 1:5000
+    for i in 1:10000
         m = rand(1:60)
         n = rand(1:60)
         A = randn(m, n)
