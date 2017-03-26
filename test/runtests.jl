@@ -166,18 +166,31 @@ end
 
         @test work1.x == work2.x
         @test work1.A == work2.A
-        @test work1.b == work2.b
+        @test work1.b == work2.b[1:length(work1.b)]
         @test work1.w == work2.w
         @test work1.zz == work2.zz
-        @test work1.idx == work2.idx
+        @test work1.idx == work2.idx[1:length(work1.idx)]
         @test work1.rnorm == work2.rnorm
         @test work1.mode == work2.mode
 
         work3 = NNLSWorkspace(A, b)
-        @test @wrappedallocs(nnls!(work3)) <= 16
+        @test @wrappedallocs(nnls!(work3)) == 0
 
-        x4 = nnls(work3, b)
-        @test x4 ≈ work2.x 
+    end
+end
+
+@testset "repeated nnls" begin
+    srand(100)
+    for i in 1:10000
+        m = rand(20:80)
+        n = rand(20:80)
+        A = randn(m, n)
+        b = randn(m)
+
+        work = nnls(A, b)
+        x1 = copy(work.x)
+        x2 = nnls(work, b)
+        @test x2 ≈ x1
     end
 end
 
@@ -204,6 +217,6 @@ end
         A = randn(m, n)
         b = randn(m)
 
-        @test nnls(A, b) ≈ NonNegLeastSquares.nnls(A, b)
+        @test nnls(A, b).x ≈ NonNegLeastSquares.nnls(A, b)
     end
 end

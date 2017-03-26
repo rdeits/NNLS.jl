@@ -180,7 +180,7 @@ Base.linearindexing{V <: UnsafeVectorView}(::Type{V}) = Base.LinearFast()
 function nnls{T}(A::DenseMatrix{T}, b::DenseVector{T}, itermax=(3 * size(A, 2)))
     work = NNLSWorkspace(A, b)
     nnls!(work, itermax)
-    work.x
+    work
 end
 
 @noinline function checkargs(work::NNLSWorkspace)
@@ -476,6 +476,8 @@ function nnls!{T, TI}(work::NNLSWorkspace{T, TI}, itermax::Integer=(3 * size(wor
     work.nsetp = nsetp
     work.rnorm = sqrt(sm)
     work.hasdecomposition = true
+    resize!(work.b, work.nsetp)
+    resize!(work.idx, work.nsetp)
     return work.x
 end
 
@@ -502,8 +504,8 @@ Lawson '74.
 function nnls{T}(work::NNLSWorkspace{T}, b::AbstractVector{T})
     @assert work.hasdecomposition
     x = zeros(work.x)
-    R = @view(work.A[1:work.nsetp, work.idx[1:work.nsetp]])
-    x[work.idx[1:work.nsetp]] = R \ work.b[1:work.nsetp]
+    R = @view(work.A[1:work.nsetp, work.idx])
+    x[work.idx] = R \ work.b
     x
 end
 
