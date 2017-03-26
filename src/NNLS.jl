@@ -235,6 +235,7 @@ function nnls!{T, TI}(work::NNLSWorkspace{T, TI}, itermax::Integer=(3 * size(wor
     iz1 = one(TI)
     iz = zero(TI)
     j = zero(TI)
+    jj = zero(TI)
     nsetp = zero(TI)
     up = zero(T)
 

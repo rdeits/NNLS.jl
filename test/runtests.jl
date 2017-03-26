@@ -1,6 +1,7 @@
 using NNLS
 using Base.Test
 import NonNegLeastSquares
+using PyCall
 
 run(`gfortran -shared -fPIC -o nnls.so nnls.f`)
 
@@ -152,7 +153,7 @@ end
 
 @testset "nnls vs fortran reference" begin
     srand(4)
-    for i in 1:10000
+    for i in 1:5000
         m = rand(20:100)
         n = rand(20:100)
         A = randn(m, n)
@@ -172,10 +173,18 @@ end
         @test work1.idx == work2.idx
         @test work1.rnorm == work2.rnorm
         @test work1.mode == work2.mode
+    end
+end
 
-        work3 = NNLSWorkspace(A, b)
-        @test @wrappedallocs(nnls!(work3)) == 0
-
+@testset "nnls allocations" begin
+    srand(101)
+    for i in 1:50
+        m = rand(20:100)
+        n = rand(20:100)
+        A = randn(m, n)
+        b = randn(m)
+        work = NNLSWorkspace(A, b)
+        @test @wrappedallocs(nnls!(work)) == 0
     end
 end
 
@@ -203,5 +212,20 @@ end
         b = randn(m)
 
         @test nnls(A, b) ≈ NonNegLeastSquares.nnls(A, b)
+    end
+end
+
+const pyopt = pyimport_conda("scipy.optimize", "scipy")
+
+@testset "nnls vs scipy" begin
+    srand(5)
+    for i in 1:5000
+        m = rand(1:60)
+        n = rand(1:60)
+        A = randn(m, n)
+        b = randn(m)
+        x1 = nnls(A, b)
+        x2, residual2 = pyopt[:nnls](A, b)
+        @test x1 == x2
     end
 end
