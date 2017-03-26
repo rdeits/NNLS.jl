@@ -4,6 +4,16 @@ export nnls,
        nnls!,
        NNLSWorkspace
 
+"""
+CONSTRUCTION AND/OR APPLICATION OF A SINGLE   
+HOUSEHOLDER TRANSFORMATION..     Q = I + U*(U**T)/B   
+ 
+The original version of this code was developed by
+Charles L. Lawson and Richard J. Hanson at Jet Propulsion Laboratory
+1973 JUN 12, and published in the book
+"SOLVING LEAST SQUARES PROBLEMS", Prentice-HalL, 1974.
+Revised FEB 1995 to accompany reprinting of the book by SIAM.
+"""
 function construct_householder!(u::AbstractVector, up)
     m = length(u)
     if m <= 1
@@ -27,6 +37,16 @@ function construct_householder!(u::AbstractVector, up)
     return result
 end
 
+"""
+CONSTRUCTION AND/OR APPLICATION OF A SINGLE   
+HOUSEHOLDER TRANSFORMATION..     Q = I + U*(U**T)/B   
+ 
+The original version of this code was developed by
+Charles L. Lawson and Richard J. Hanson at Jet Propulsion Laboratory
+1973 JUN 12, and published in the book
+"SOLVING LEAST SQUARES PROBLEMS", Prentice-HalL, 1974.
+Revised FEB 1995 to accompany reprinting of the book by SIAM.
+"""
 function apply_householder!{T}(u::AbstractVector{T}, up::T, c::AbstractVector{T})
     m = length(u)
     if m > 1
@@ -57,6 +77,16 @@ function apply_householder!{T}(u::AbstractVector{T}, up::T, c::AbstractVector{T}
     end
 end
 
+"""
+CONSTRUCTION AND/OR APPLICATION OF A SINGLE   
+HOUSEHOLDER TRANSFORMATION..     Q = I + U*(U**T)/B   
+ 
+The original version of this code was developed by
+Charles L. Lawson and Richard J. Hanson at Jet Propulsion Laboratory
+1973 JUN 12, and published in the book
+"SOLVING LEAST SQUARES PROBLEMS", Prentice-HalL, 1974.
+Revised FEB 1995 to accompany reprinting of the book by SIAM.
+"""
 function orthogonal_rotmat{T}(a::T, b::T)
     if abs(a) > abs(b)
         xr = b / a
@@ -78,6 +108,13 @@ function orthogonal_rotmat{T}(a::T, b::T)
     return c, s, sig
 end
 
+"""
+The original version of this code was developed by
+Charles L. Lawson and Richard J. Hanson at Jet Propulsion Laboratory
+1973 JUN 15, and published in the book
+"SOLVING LEAST SQUARES PROBLEMS", Prentice-HalL, 1974.
+Revised FEB 1995 to accompany reprinting of the book by SIAM.
+"""
 function solve_triangular_system(zz, A, idx, nsetp, jj)
     for l in 1:nsetp
         ip = nsetp + 1 - l
@@ -149,6 +186,19 @@ end
     @assert size(work.idx) == (n,)
 end
     
+"""
+Algorithm NNLS: NONNEGATIVE LEAST SQUARES
+ 
+The original version of this code was developed by
+Charles L. Lawson and Richard J. Hanson at Jet Propulsion Laboratory
+1973 JUN 15, and published in the book
+"SOLVING LEAST SQUARES PROBLEMS", Prentice-HalL, 1974.
+Revised FEB 1995 to accompany reprinting of the book by SIAM.
+
+GIVEN AN M BY N MATRIX, A, AND AN M-VECTOR, B,  COMPUTE AN
+N-VECTOR, X, THAT SOLVES THE LEAST SQUARES PROBLEM   
+                 A * X = B  SUBJECT TO X .GE. 0   
+"""
 function nnls!{T}(work::NNLSWorkspace{T}, A::DenseMatrix{T}, b::DenseVector{T}, itermax=(3 * size(A, 2)))
     checkargs(work, A, b)
 
