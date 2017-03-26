@@ -14,7 +14,7 @@ Charles L. Lawson and Richard J. Hanson at Jet Propulsion Laboratory
 "SOLVING LEAST SQUARES PROBLEMS", Prentice-HalL, 1974.
 Revised FEB 1995 to accompany reprinting of the book by SIAM.
 """
-function construct_householder!(u::AbstractVector, up)
+function construct_householder!{T}(u::AbstractVector{T}, up::T)
     m = length(u)
     if m <= 1
         return up
@@ -185,6 +185,20 @@ end
     @assert size(work.zz) == (m,)
     @assert size(work.idx) == (n,)
 end
+
+function largest_positive_dual{T, TI}(w::AbstractVector{T}, idx::AbstractVector{TI}, range)
+    wmax = zero(T)
+    izmax = zero(TI)
+    for i in range
+        j = idx[i]
+        if w[j] > wmax
+            wmax = w[j]
+            izmax = i
+        end
+    end
+    wmax, izmax
+end
+
     
 """
 Algorithm NNLS: NONNEGATIVE LEAST SQUARES
@@ -199,7 +213,7 @@ GIVEN AN M BY N MATRIX, A, AND AN M-VECTOR, B,  COMPUTE AN
 N-VECTOR, X, THAT SOLVES THE LEAST SQUARES PROBLEM   
                  A * X = B  SUBJECT TO X .GE. 0   
 """
-function nnls!{T}(work::NNLSWorkspace{T}, A::DenseMatrix{T}, b::DenseVector{T}, itermax=(3 * size(A, 2)))
+function nnls!{T, TI}(work::NNLSWorkspace{T, TI}, A::DenseMatrix{T}, b::DenseVector{T}, itermax=(3 * size(A, 2)))
     checkargs(work, A, b)
 
     x = work.x
@@ -209,19 +223,18 @@ function nnls!{T}(work::NNLSWorkspace{T}, A::DenseMatrix{T}, b::DenseVector{T}, 
     const factor = 0.01
     work.mode[] = 1
     
-    m, n = size(A)
+    m = convert(TI, size(A, 1))
+    n = convert(TI, size(A, 2))
     
     iter = 0
     x .= 0
     idx .= 1:n
     
-    izmax = 0
     iz2 = n
-    iz1 = 1
-    iz = 0
-    j = 0
-    nsetp = 0
-    npp1 = 1
+    iz1 = one(TI)
+    iz = zero(TI)
+    j = zero(TI)
+    nsetp = zero(TI)
     up = zero(T)
 
     terminated = false
@@ -237,25 +250,18 @@ function nnls!{T}(work::NNLSWorkspace{T}, A::DenseMatrix{T}, b::DenseVector{T}, 
         end
         
         # COMPUTE COMPONENTS OF THE DUAL (NEGATIVE GRADIENT) VECTOR W().
-        for iz in iz1:iz2
-            j = idx[iz]
+        for i in iz1:iz2
+            idxi = idx[i]
             sm = zero(T)
-            for l in npp1:m
-                sm += A[l, j] * b[l]
+            for l in (nsetp + 1):m
+                sm += A[l, idxi] * b[l]
             end
-            w[j] = sm
+            w[idxi] = sm
         end
         
-        # FIND LARGEST POSITIVE W(J).
         while true
-            wmax = zero(T)
-            for iz in iz1:iz2
-                j = idx[iz]
-                if w[j] > wmax
-                    wmax = w[j]
-                    izmax = iz
-                end
-            end
+            # FIND LARGEST POSITIVE W(J).
+            wmax, izmax = largest_positive_dual(w, idx, iz1:iz2)
             
             # IF WMAX .LE. 0. GO TO TERMINATION.
             # THIS INDICATES SATISFACTION OF THE KUHN-TUCKER CONDITIONS.
@@ -270,31 +276,26 @@ function nnls!{T}(work::NNLSWorkspace{T}, A::DenseMatrix{T}, b::DenseVector{T}, 
             # THE SIGN OF W(J) IS OK FOR J TO BE MOVED TO SET P.
             # BEGIN THE TRANSFORMATION AND CHECK NEW DIAGONAL ELEMENT TO AVOID
             # NEAR LINEAR DEPENDENCE.
-            Asave = A[npp1, j]
+            Asave = A[nsetp + 1, j]
             up = construct_householder!(
-                UnsafeVectorView(A, sub2ind(A, npp1, j), m - npp1 + 1),
+                UnsafeVectorView(A, sub2ind(A, nsetp + 1, j), m - nsetp),
                 up)
-            # up = construct_householder!(@view(A[npp1:end, j]), up)
             unorm = zero(T)
-            if nsetp != 0
-                for l in 1:nsetp
-                    unorm += A[l, j]^2
-                end
+            for l in 1:nsetp
+                unorm += A[l, j]^2
             end
             unorm = sqrt(unorm)
 
-            if ((unorm + abs(A[npp1, j]) * factor) - unorm) > 0 
+            if ((unorm + abs(A[nsetp + 1, j]) * factor) - unorm) > 0 
                 # COL J IS SUFFICIENTLY INDEPENDENT.  COPY B INTO ZZ, UPDATE ZZ
                 # AND SOLVE FOR ZTEST ( = PROPOSED NEW VALUE FOR X(J) ).   
                 # println("copying b into zz")
                 zz .= b
                 apply_householder!(
-                    UnsafeVectorView(A, sub2ind(A, npp1, j), m - npp1 + 1),
+                    UnsafeVectorView(A, sub2ind(A, nsetp + 1, j), m - nsetp),
                     up,
-                    UnsafeVectorView(zz, npp1, m - npp1 + 1))
-                # apply_householder!(@view(A[npp1:end, j]), up, @view(zz[npp1:end]))
-                # print("after h12: ")
-                ztest = zz[npp1] / A[npp1, j]
+                    UnsafeVectorView(zz, nsetp + 1, m - nsetp))
+                ztest = zz[nsetp + 1] / A[nsetp + 1, j]
 
                 # SEE IF ZTEST IS POSITIVE  
                 if ztest > 0
@@ -305,7 +306,7 @@ function nnls!{T}(work::NNLSWorkspace{T}, A::DenseMatrix{T}, b::DenseVector{T}, 
             # REJECT J AS A CANDIDATE TO BE MOVED FROM SET Z TO SET P.  
             # RESTORE A(NPP1,J), SET W(J)=0., AND LOOP BACK TO TEST DUAL
             # COEFFS AGAIN.
-            A[npp1, j] = Asave
+            A[nsetp + 1, j] = Asave
             w[j] = 0
         end
         if terminated
@@ -320,9 +321,8 @@ function nnls!{T}(work::NNLSWorkspace{T}, A::DenseMatrix{T}, b::DenseVector{T}, 
 
         idx[iz] = idx[iz1]
         idx[iz1] = j
-        iz1 += 1
-        nsetp = npp1
-        npp1 += 1
+        iz1 += one(TI)
+        nsetp += one(TI)
 
         if iz1 <= iz2
             for jz in iz1:iz2
@@ -331,12 +331,11 @@ function nnls!{T}(work::NNLSWorkspace{T}, A::DenseMatrix{T}, b::DenseVector{T}, 
                     UnsafeVectorView(A, sub2ind(A, nsetp, j), m - nsetp + 1),
                     up,
                     UnsafeVectorView(A, sub2ind(A, nsetp, jj), m - nsetp + 1))
-                # apply_householder!(@view(A[nsetp:end, j]), up, @view(A[nsetp:end, jj]))
             end
         end
 
         if nsetp != m
-            for l in npp1:m
+            for l in (nsetp + 1):m
                 A[l, j] = 0
             end
         end
@@ -361,8 +360,8 @@ function nnls!{T}(work::NNLSWorkspace{T}, A::DenseMatrix{T}, b::DenseVector{T}, 
 
             # SEE IF ALL NEW CONSTRAINED COEFFS ARE FEASIBLE. 
             # IF NOT COMPUTE ALPHA.    
-            alpha = 2.0
-            for ip in 1:nsetp
+            alpha = convert(T, 2)
+            for ip in one(TI):nsetp
                 l = idx[ip]
                 if zz[ip] <= 0
                     t = -x[l] / (zz[ip] - x[l])
@@ -381,7 +380,7 @@ function nnls!{T}(work::NNLSWorkspace{T}, A::DenseMatrix{T}, b::DenseVector{T}, 
 
             # OTHERWISE USE ALPHA WHICH WILL BE BETWEEN 0 AND 1 TO
             # INTERPOLATE BETWEEN THE OLD X AND THE NEW ZZ.
-            for ip in 1:nsetp
+            for ip in one(TI):nsetp
                 l = idx[ip]
                 x[l] = x[l] + alpha * (zz[ip] - x[l])
             end
@@ -394,7 +393,7 @@ function nnls!{T}(work::NNLSWorkspace{T}, A::DenseMatrix{T}, b::DenseVector{T}, 
                 x[i] = 0
 
                 if jj != nsetp
-                    jj += 1
+                    jj += one(TI)
                     for j in jj:nsetp
                         ii = idx[j]
                         idx[j - 1] = ii
@@ -417,9 +416,8 @@ function nnls!{T}(work::NNLSWorkspace{T}, A::DenseMatrix{T}, b::DenseVector{T}, 
                     end
                 end
 
-                npp1 = nsetp
-                nsetp = nsetp - 1
-                iz1 = iz1 - 1
+                nsetp -= one(TI)
+                iz1 -= one(TI)
                 idx[iz1] = i
 
                 # SEE IF THE REMAINING COEFFS IN SET P ARE FEASIBLE.  THEY SHOULD
@@ -428,7 +426,7 @@ function nnls!{T}(work::NNLSWorkspace{T}, A::DenseMatrix{T}, b::DenseVector{T}, 
                 # THAT ARE NONPOSITIVE WILL BE SET TO ZERO   
                 # AND MOVED FROM SET P TO SET Z. 
                 allfeasible = true
-                for jj in 1:nsetp
+                for jj in one(TI):nsetp
                     i = idx[jj]
                     if x[i] <= 0
                         allfeasible = false
@@ -449,9 +447,8 @@ function nnls!{T}(work::NNLSWorkspace{T}, A::DenseMatrix{T}, b::DenseVector{T}, 
         end
         # ******  END OF SECONDARY LOOP  ******
 
-        for ip in 1:nsetp
-            i = idx[ip]
-            x[i] = zz[ip]
+        for i in 1:nsetp
+            x[idx[i]] = zz[i]
         end
         # ALL NEW COEFFS ARE POSITIVE.  LOOP BACK TO BEGINNING.
     end
@@ -461,14 +458,12 @@ function nnls!{T}(work::NNLSWorkspace{T}, A::DenseMatrix{T}, b::DenseVector{T}, 
     # COMPUTE THE NORM OF THE FINAL RESIDUAL VECTOR.
 
     sm = zero(T)
-    if npp1 <= m
-        for i in npp1:m
+    if nsetp < m
+        for i in (nsetp + 1):m
             sm += b[i]^2
         end
     else
-        for j in 1:n
-            w[j] = 0
-        end
+        w .= 0
     end
     work.rnorm[] = sqrt(sm)
 end

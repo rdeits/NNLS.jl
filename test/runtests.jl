@@ -4,6 +4,16 @@ import NonNegLeastSquares
 
 run(`gfortran -shared -fPIC -o nnls.so nnls.f`)
 
+macro wrappedallocs(expr)
+    argnames = [gensym() for a in expr.args]
+    quote
+        function g($(argnames...))
+            @allocated $(Expr(expr.head, argnames...))
+        end
+        $(Expr(:call, :g, [esc(a) for a in expr.args]...))
+    end
+end
+
 function h1_reference!(u::DenseVector)
     mode = 1
     lpivot = 1
@@ -87,7 +97,7 @@ end
         u = randn(rand(3:10))
         
         u1 = copy(u)
-        up1 = NNLS.construct_householder!(u1, 0)
+        up1 = NNLS.construct_householder!(u1, 0.0)
         
         u2 = copy(u)
         up2 = h1_reference!(u2)
@@ -104,7 +114,7 @@ end
         
         u1 = copy(u)
         c1 = copy(c)
-        up1 = NNLS.construct_householder!(u1, 0)
+        up1 = NNLS.construct_householder!(u1, 0.0)
         NNLS.apply_householder!(u1, up1, c1)
         
         u2 = copy(u)
@@ -115,6 +125,12 @@ end
         @test up1 == up2
         @test u1 == u2
         @test c1 == c2
+
+        u3 = copy(u)
+        c3 = copy(c)
+        @test @wrappedallocs(NNLS.construct_householder!(u3, 0.0)) == 0
+        up3 = up1
+        @test @wrappedallocs(NNLS.apply_householder!(u3, up3, c3)) == 0
     end
 end
 
@@ -124,6 +140,7 @@ end
         a = randn()
         b = randn()
         @test NNLS.orthogonal_rotmat(a, b) == g1_reference(a, b)
+        @test @wrappedallocs(NNLS.orthogonal_rotmat(a, b)) == 0
     end
 end
 
@@ -153,7 +170,26 @@ end
         @test work1.idx == work2.idx
         @test work1.rnorm[] == work2.rnorm[]
         @test work1.mode[] == work2.mode[]
+
+        A3, b3 = copy(A), copy(b)
+        work3 = NNLSWorkspace(Float64, m, n)
+        @test @wrappedallocs(nnls!(work3, A3, b3)) <= 16
     end
+end
+
+@testset "non-Int Integer workspace" begin
+    m = 10
+    n = 20
+    A = randn(m, n)
+    b = randn(m)
+    work = NNLSWorkspace(Float64, Int32, m, n)
+    # Compile
+    nnls!(work, A, b)
+
+    A = randn(m, n)
+    b = randn(m)
+    work = NNLSWorkspace(Float64, Int32, m, n)
+    @test @wrappedallocs(nnls!(work, A, b)) <= 16
 end
 
 @testset "nnls vs NonNegLeastSquares" begin
