@@ -1,17 +1,27 @@
 using NNLS
 using BenchmarkTools
 import NonNegLeastSquares
+using PyCall
+
+const pyopt_nnls = pyimport_conda("scipy.optimize", "scipy")[:nnls]
 
 function runbenchmarks()
     srand(1)
-    println("M\tN\ttime_ratio\tmemory_ratio")
-    for m in 10:20:70
+    println("M\tN\tt_nnls\tt_non_neg_least_squares")
+    for m in 10:20:90
         for n_over_m in [0.5, 1, 2]
             n = round(Int, m * n_over_m)
-            inputs = [(randn(m, n), randn(m)) for i in 1:100]
+            inputs = [(randn(m, n), randn(m)) for i in 1:50]
 
             for (A, b) in inputs
                 @assert nnls(A, b) ≈ NonNegLeastSquares.nnls(A, b)
+                @assert nnls(A, b) == pyopt_nnls(A, b)[1]
+            end
+
+            t0 = @elapsed begin
+                for (A, b) in inputs
+                    pyopt_nnls(A, b)
+                end
             end
 
             x1, t1, m1, gc1, mem1 = @timed begin
@@ -24,7 +34,8 @@ function runbenchmarks()
                     NonNegLeastSquares.nnls(A, b)
                 end
             end
-            @printf("%d\t%d\t%.1f\t%.1f\n", m, n, t2/t1, m2/m1)
+            # @show (t0, t1, t2)
+            @printf("%d\t%d\t%.2f\t%.2f\n", m, n, t1 / t0, t2 / t0)
             # b1 = median(@benchmark nnls(A, b) setup=(A = randn($m, $n); b = randn($m)))
             # b2 = median(@benchmark NonNegLeastSquares.nnls(A, b) setup=(A = randn($m, $n); b = randn($m)))
             # r = ratio(b2, b1)
