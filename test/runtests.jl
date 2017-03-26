@@ -64,11 +64,15 @@ function g1_reference(a, b)
     return c[], s[], sig[]
 end
 
-function nnls_reference!(work::NNLSWorkspace{Cdouble, Cint}, A::DenseMatrix{Cdouble}, b::DenseVector{Cdouble})
+function nnls_reference!(work::NNLSWorkspace{Cdouble, Cint})
+    A = work.A
+    b = work.b
     m, n = size(A)
     @assert length(work.x) == n
     @assert length(work.w) == n
     mda = m
+    mode = Ref{Cint}()
+    rnorm = Ref{Cdouble}()
     ccall((:nnls_, "nnls.so"), Void,
           (Ref{Cdouble}, Ref{Cint}, Ref{Cint}, Ref{Cint}, # A, mda, m, n
            Ref{Cdouble}, # b
@@ -81,11 +85,13 @@ function nnls_reference!(work::NNLSWorkspace{Cdouble, Cint}, A::DenseMatrix{Cdou
           A, mda, m, n,
           b, 
           work.x,
-          work.rnorm,
+          rnorm,
           work.w,
           work.zz,
           work.idx,
-          work.mode)
+          mode)
+    work.rnorm = rnorm[]
+    work.mode = mode[]
     if work.mode[] == 2
         error("nnls.f exited with dimension error")
     end
@@ -152,28 +158,26 @@ end
         A = randn(m, n)
         b = randn(m)
 
-        A1 = copy(A)
-        b1 = copy(b)
-        work1 = NNLSWorkspace(Float64, m, n)
-        nnls!(work1, A1, b1)
+        work1 = NNLSWorkspace(A, b)
+        nnls!(work1)
 
-        A2 = copy(A)
-        b2 = copy(b)
-        work2 = NNLSWorkspace(Cdouble, Cint, m, n)
-        nnls_reference!(work2, A2, b2)
+        work2 = NNLSWorkspace(A, b, Cint)
+        nnls_reference!(work2)
 
         @test work1.x == work2.x
-        @test A1 == A2
-        @test b1 == b2
+        @test work1.A == work2.A
+        @test work1.b == work2.b
         @test work1.w == work2.w
         @test work1.zz == work2.zz
         @test work1.idx == work2.idx
-        @test work1.rnorm[] == work2.rnorm[]
-        @test work1.mode[] == work2.mode[]
+        @test work1.rnorm == work2.rnorm
+        @test work1.mode == work2.mode
 
-        A3, b3 = copy(A), copy(b)
-        work3 = NNLSWorkspace(Float64, m, n)
-        @test @wrappedallocs(nnls!(work3, A3, b3)) <= 16
+        work3 = NNLSWorkspace(A, b)
+        @test @wrappedallocs(nnls!(work3)) <= 16
+
+        x4 = nnls(work3, b)
+        @test x4 ≈ work2.x 
     end
 end
 
@@ -182,14 +186,14 @@ end
     n = 20
     A = randn(m, n)
     b = randn(m)
-    work = NNLSWorkspace(Float64, Int32, m, n)
+    work = NNLSWorkspace(A, b, Int32)
     # Compile
-    nnls!(work, A, b)
+    nnls!(work)
 
     A = randn(m, n)
     b = randn(m)
-    work = NNLSWorkspace(Float64, Int32, m, n)
-    @test @wrappedallocs(nnls!(work, A, b)) <= 16
+    work = NNLSWorkspace(A, b, Int32)
+    @test @wrappedallocs(nnls!(work)) <= 16
 end
 
 @testset "nnls vs NonNegLeastSquares" begin

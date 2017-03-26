@@ -129,35 +129,41 @@ function solve_triangular_system(zz, A, idx, nsetp, jj)
     return jj
 end
 
-immutable NNLSWorkspace{T, I <: Integer}
+type NNLSWorkspace{T, I <: Integer}
+    A::Matrix{T}
+    b::Vector{T}
     x::Vector{T}
     w::Vector{T}
     zz::Vector{T}
     idx::Vector{I}
-    rnorm::Ref{T}
-    mode::Ref{I}
+    rnorm::T
+    mode::I
+    nsetp::I
+    hasdecomposition::Bool
 end
 
-function NNLSWorkspace{T}(::Type{T}, m::Integer, n::Integer)
-    NNLSWorkspace{T, Int}(
-        zeros(T, n),
-        zeros(T, n),
-        zeros(T, m),
-        zeros(Int, n),
-        zero(T),
-        0)
-end
-
-function NNLSWorkspace{T, I <: Integer}(::Type{T}, ::Type{I}, m::Integer, n::Integer)
+function NNLSWorkspace{T, I}(A::Matrix{T}, b::Vector{T}, indextype::Type{I}=Int)
+    m, n = size(A)
+    @assert size(b) == (m,)
     NNLSWorkspace{T, I}(
-        zeros(T, n),
-        zeros(T, n),
-        zeros(T, m),
-        zeros(Int, n),
-        zero(T),
-        0)
+        copy(A),      # A
+        copy(b),      # b
+        zeros(T, n),  # x
+        zeros(T, n),  # w
+        zeros(T, m),  # zz
+        zeros(I, n),  # idx
+        zero(T),      # rnorm
+        zero(I),      # mode
+        zero(I),      # nsetp
+        false         # hasdecomposition
+    )
 end
 
+"""
+Views in Julia still allocate some memory (since they need to keep
+a reference to the original array). This type allocates no memory
+and does no bounds checking. Use it with caution. 
+"""
 immutable UnsafeVectorView{T} <: AbstractVector{T}
     offset::Int
     len::Int
@@ -172,14 +178,14 @@ Base.length(v::UnsafeVectorView) = v.len
 Base.linearindexing{V <: UnsafeVectorView}(::Type{V}) = Base.LinearFast()
 
 function nnls{T}(A::DenseMatrix{T}, b::DenseVector{T}, itermax=(3 * size(A, 2)))
-    work = NNLSWorkspace(T, size(A, 1), size(A, 2))
-    nnls!(work, copy(A), copy(b), itermax)
+    work = NNLSWorkspace(A, b)
+    nnls!(work, itermax)
     work.x
 end
 
-@noinline function checkargs(work::NNLSWorkspace, A::DenseMatrix, b::DenseVector)
-    m, n = size(A)
-    @assert size(b) == (m,)
+@noinline function checkargs(work::NNLSWorkspace)
+    m, n = size(work.A)
+    @assert size(work.b) == (m,)
     @assert size(work.x) == (n,)
     @assert size(work.w) == (n,)
     @assert size(work.zz) == (m,)
@@ -213,15 +219,17 @@ GIVEN AN M BY N MATRIX, A, AND AN M-VECTOR, B,  COMPUTE AN
 N-VECTOR, X, THAT SOLVES THE LEAST SQUARES PROBLEM   
                  A * X = B  SUBJECT TO X .GE. 0   
 """
-function nnls!{T, TI}(work::NNLSWorkspace{T, TI}, A::DenseMatrix{T}, b::DenseVector{T}, itermax=(3 * size(A, 2)))
-    checkargs(work, A, b)
+function nnls!{T, TI}(work::NNLSWorkspace{T, TI}, itermax::Integer=(3 * size(work.A, 2)))
+    checkargs(work)
 
+    A = work.A
+    b = work.b
     x = work.x
     w = work.w
     zz = work.zz
     idx = work.idx
     const factor = 0.01
-    work.mode[] = 1
+    work.mode = 1
     
     m = convert(TI, size(A, 1))
     n = convert(TI, size(A, 2))
@@ -352,7 +360,7 @@ function nnls!{T, TI}(work::NNLSWorkspace{T, TI}, A::DenseMatrix{T}, b::DenseVec
         while true
             iter += 1
             if iter > itermax
-                work.mode[] = 3
+                work.mode = 3
                 terminated = true
                 println("NNLS quitting on iteration count")
                 break
@@ -465,8 +473,38 @@ function nnls!{T, TI}(work::NNLSWorkspace{T, TI}, A::DenseMatrix{T}, b::DenseVec
     else
         w .= 0
     end
-    work.rnorm[] = sqrt(sm)
+    work.nsetp = nsetp
+    work.rnorm = sqrt(sm)
+    work.hasdecomposition = true
+    return work.x
 end
 
+"""
+Uses the result of a previous NNLS computation to quickly compute
+additional NNLS solutions for the same A matrix. That is, if you 
+have done:
+
+    work = NNLSWorkspace(A, b)
+    x = nnls!(work)
+
+then you can solve additional NNLS problems with the same A matrix
+but new b vectors by doing:
+
+    x2 = nnls(work, b2)
+    x3 = nnls(work, b3)
+
+which should be faster than re-solving the entire NNLS problem.
+
+Extracts the R matrix from the implicit QR decomposition computed as a
+by-product of the NNLS subroutine. See Method 3 of Chapter 24 of
+Lawson '74.
+"""
+function nnls{T}(work::NNLSWorkspace{T}, b::AbstractVector{T})
+    @assert work.hasdecomposition
+    x = zeros(work.x)
+    R = @view(work.A[1:work.nsetp, work.idx[1:work.nsetp]])
+    x[work.idx[1:work.nsetp]] = R \ work.b[1:work.nsetp]
+    x
+end
 
 end # module
