@@ -138,7 +138,6 @@ type NNLSWorkspace{T, I <: Integer}
     idx::Vector{I}
     rnorm::T
     mode::I
-    nsetp::I
     hasdecomposition::Bool
 end
 
@@ -154,7 +153,6 @@ function NNLSWorkspace{T, I}(A::Matrix{T}, b::Vector{T}, indextype::Type{I}=Int)
         zeros(I, n),  # idx
         zero(T),      # rnorm
         zero(I),      # mode
-        zero(I),      # nsetp
         false         # hasdecomposition
     )
 end
@@ -473,11 +471,10 @@ function nnls!{T, TI}(work::NNLSWorkspace{T, TI}, itermax::Integer=(3 * size(wor
     else
         w .= 0
     end
-    work.nsetp = nsetp
     work.rnorm = sqrt(sm)
     work.hasdecomposition = true
-    resize!(work.b, work.nsetp)
-    resize!(work.idx, work.nsetp)
+    resize!(work.b, nsetp)
+    resize!(work.idx, nsetp)
     return work.x
 end
 
@@ -504,7 +501,7 @@ Lawson '74.
 function nnls{T}(work::NNLSWorkspace{T}, b::AbstractVector{T})
     @assert work.hasdecomposition
     x = zeros(work.x)
-    R = @view(work.A[1:work.nsetp, work.idx])
+    R = @view(work.A[1:length(work.idx), work.idx])
     x[work.idx] = R \ work.b
     x
 end
