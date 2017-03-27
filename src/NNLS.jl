@@ -22,7 +22,15 @@ function construct_householder!{T}(u::AbstractVector{T}, up::T)
         return up
     end
     
-    cl = maximum(abs, u)
+    # This could be written as:
+    #   cl = maximum(abs, u)
+    # but that suffers from: 
+    # https://github.com/JuliaLang/julia/issues/21170
+    cl = abs(u[1])
+    for i in 2:length(u)
+        cl = max(cl, abs(u[i]))
+    end
+    
     @assert cl > 0
     clinv = 1 / cl
     sm = zero(eltype(u))
