@@ -23,6 +23,19 @@ macro wrappedallocs(expr)
     end
 end
 
+@testset "bigfloat" begin
+    srand(5)
+    for i in 1:100
+        m = rand(1:10)
+        n = rand(1:10)
+        A = randn(m, n)
+        b = randn(m)
+        x1 = nnls(A, b)
+        x2 = nnls(BigFloat.(A), BigFloat.(b))
+        @test x1 ≈ x2
+    end
+end
+
 function h1_reference!(u::DenseVector)
     mode = 1
     lpivot = 1

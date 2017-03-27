@@ -9,6 +9,9 @@ julia:
 notifications:
   email: false
 
+branches:
+  only: master
+
 before_install:
   - export PYTHON=""
   - if [[ "$TRAVIS_OS_NAME" == "osx"   ]]; then brew install gcc ; fi

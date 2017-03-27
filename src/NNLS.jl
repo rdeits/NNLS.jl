@@ -17,7 +17,7 @@ Charles L. Lawson and Richard J. Hanson at Jet Propulsion Laboratory
 "SOLVING LEAST SQUARES PROBLEMS", Prentice-HalL, 1974.
 Revised FEB 1995 to accompany reprinting of the book by SIAM.
 """
-function construct_householder!{T}(u::AbstractVector{T}, up::T)
+function construct_householder!{T}(u::AbstractVector{T}, up::T)::T
     m = length(u)
     if m <= 1
         return up
@@ -26,7 +26,7 @@ function construct_householder!{T}(u::AbstractVector{T}, up::T)
     cl = maximum(abs, u)
     @assert cl > 0
     clinv = 1 / cl
-    sm = zero(eltype(u))
+    sm = zero(T)
     for ui in u
         sm += (ui * clinv)^2
     end
@@ -94,7 +94,7 @@ Revised FEB 1995 to accompany reprinting of the book by SIAM.
       SIG IS COMPUTED LAST TO ALLOW FOR THE POSSIBILITY THAT
       SIG MAY BE IN THE SAME LOCATION AS A OR B .
 """
-function orthogonal_rotmat{T}(a::T, b::T)
+function orthogonal_rotmat{T}(a::T, b::T)::Tuple{T, T, T}
     if abs(a) > abs(b)
         xr = b / a
         yr = sqrt(1 + xr^2)
@@ -190,6 +190,7 @@ function NNLSWorkspace{T, I}(A::Matrix{T}, b::Vector{T}, indextype::Type{I}=Int)
     work
 end
 
+
 """
 Views in Julia still allocate some memory (since they need to keep
 a reference to the original array). This type allocates no memory
@@ -212,6 +213,20 @@ else
     Base.linearindexing{V <: UnsafeVectorView}(::Type{V}) = Base.LinearFast()
 end
 
+"""
+UnsafeVectorView only works for isbits types. For other types, we're already
+allocating lots of memory elsewhere, so creating a new View is fine.
+
+This function looks type-unstable, but the isbits(T) test can be evaluated
+by the compiler, so the result is actually type-stable.
+"""
+function fastview{T}(parent::DenseArray{T}, start_ind::Integer, len::Integer)
+    if isbits(T)
+        UnsafeVectorView(parent, start_ind, len)
+    else
+        @view(parent[start_ind:(start_ind + len - 1)])
+    end
+end
 
 @noinline function checkargs(work::NNLSWorkspace)
     m, n = size(work.QA)
@@ -317,9 +332,9 @@ function nnls!{T, TI}(work::NNLSWorkspace{T, TI}, max_iter::Integer=(3 * size(wo
             # NEAR LINEAR DEPENDENCE.
             Asave = A[nsetp + 1, j]
             up = construct_householder!(
-                UnsafeVectorView(A, sub2ind(A, nsetp + 1, j), m - nsetp),
+                fastview(A, sub2ind(A, nsetp + 1, j), m - nsetp),
                 up)
-            unorm = zero(T)
+            unorm::T = zero(T)
             for l in 1:nsetp
                 unorm += A[l, j]^2
             end
@@ -331,9 +346,9 @@ function nnls!{T, TI}(work::NNLSWorkspace{T, TI}, max_iter::Integer=(3 * size(wo
                 # println("copying b into zz")
                 zz .= b
                 apply_householder!(
-                    UnsafeVectorView(A, sub2ind(A, nsetp + 1, j), m - nsetp),
+                    fastview(A, sub2ind(A, nsetp + 1, j), m - nsetp),
                     up,
-                    UnsafeVectorView(zz, nsetp + 1, m - nsetp))
+                    fastview(zz, nsetp + 1, m - nsetp))
                 ztest = zz[nsetp + 1] / A[nsetp + 1, j]
 
                 # SEE IF ZTEST IS POSITIVE
@@ -367,9 +382,9 @@ function nnls!{T, TI}(work::NNLSWorkspace{T, TI}, max_iter::Integer=(3 * size(wo
             for jz in iz1:iz2
                 jj = idx[jz]
                 apply_householder!(
-                    UnsafeVectorView(A, sub2ind(A, nsetp, j), m - nsetp + 1),
+                    fastview(A, sub2ind(A, nsetp, j), m - nsetp + 1),
                     up,
-                    UnsafeVectorView(A, sub2ind(A, nsetp, jj), m - nsetp + 1))
+                    fastview(A, sub2ind(A, nsetp, jj), m - nsetp + 1))
             end
         end
 
