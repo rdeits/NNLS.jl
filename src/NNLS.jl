@@ -80,14 +80,18 @@ function apply_householder!{T}(u::AbstractVector{T}, up::T, c::AbstractVector{T}
 end
 
 """
-CONSTRUCTION AND/OR APPLICATION OF A SINGLE   
-HOUSEHOLDER TRANSFORMATION..     Q = I + U*(U**T)/B   
- 
+   COMPUTE ORTHOGONAL ROTATION MATRIX..  
 The original version of this code was developed by
 Charles L. Lawson and Richard J. Hanson at Jet Propulsion Laboratory
 1973 JUN 12, and published in the book
 "SOLVING LEAST SQUARES PROBLEMS", Prentice-HalL, 1974.
 Revised FEB 1995 to accompany reprinting of the book by SIAM.
+ 
+   COMPUTE.. MATRIX   (C, S) SO THAT (C, S)(A) = (SQRT(A**2+B**2))   
+                      (-S,C)         (-S,C)(B)   (   0          )    
+   COMPUTE SIG = SQRT(A**2+B**2) 
+      SIG IS COMPUTED LAST TO ALLOW FOR THE POSSIBILITY THAT 
+      SIG MAY BE IN THE SAME LOCATION AS A OR B .
 """
 function orthogonal_rotmat{T}(a::T, b::T)
     if abs(a) > abs(b)

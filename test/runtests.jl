@@ -147,6 +147,8 @@ end
     for i in 1:1000
         a = randn()
         b = randn()
+        c, s, sig = NNLS.orthogonal_rotmat(a, b)
+        @test [c s; -s c] * [a, b] ≈ [sig, 0]
         @test NNLS.orthogonal_rotmat(a, b) == g1_reference(a, b)
         @test @wrappedallocs(NNLS.orthogonal_rotmat(a, b)) == 0
     end
