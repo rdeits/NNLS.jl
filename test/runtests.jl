@@ -6,10 +6,12 @@ const pyopt = pyimport_conda("scipy.optimize", "scipy")
 
 const libnnls = joinpath(dirname(@__FILE__), "libnnls")
 libnnls_path = libnnls * "." * Libdl.dlext
-
 run(`gfortran -shared -fPIC -o $libnnls_path nnls.f`)
-
 @test isfile(libnnls_path)
+
+# Allocation measurement doesn't work reliably on Julia v0.5 when
+# code coverage checking is enabled.
+const test_allocs = VERSION >= v"0.6-" || !Base.JLOptions().code_coverage
 
 macro wrappedallocs(expr)
     argnames = [gensym() for a in expr.args]
@@ -139,11 +141,13 @@ end
         @test u1 == u2
         @test c1 == c2
 
-        u3 = copy(u)
-        c3 = copy(c)
-        @test @wrappedallocs(NNLS.construct_householder!(u3, 0.0)) == 0
-        up3 = up1
-        @test @wrappedallocs(NNLS.apply_householder!(u3, up3, c3)) == 0
+        if test_allocs
+            u3 = copy(u)
+            c3 = copy(c)
+            @test @wrappedallocs(NNLS.construct_householder!(u3, 0.0)) == 0
+            up3 = up1
+            @test @wrappedallocs(NNLS.apply_householder!(u3, up3, c3)) == 0
+        end
     end
 end
 
@@ -155,7 +159,9 @@ end
         c, s, sig = NNLS.orthogonal_rotmat(a, b)
         @test [c s; -s c] * [a, b] ≈ [sig, 0]
         @test NNLS.orthogonal_rotmat(a, b) == g1_reference(a, b)
-        @test @wrappedallocs(NNLS.orthogonal_rotmat(a, b)) == 0
+        if test_allocs
+            @test @wrappedallocs(NNLS.orthogonal_rotmat(a, b)) == 0
+        end
     end
 end
 
@@ -184,15 +190,17 @@ end
     end
 end
 
-@testset "nnls allocations" begin
-    srand(101)
-    for i in 1:50
-        m = rand(20:100)
-        n = rand(20:100)
-        A = randn(m, n)
-        b = randn(m)
-        work = NNLSWorkspace(A, b)
-        @test @wrappedallocs(nnls!(work)) == 0
+if test_allocs
+    @testset "nnls allocations" begin
+        srand(101)
+        for i in 1:50
+            m = rand(20:100)
+            n = rand(20:100)
+            A = randn(m, n)
+            b = randn(m)
+            work = NNLSWorkspace(A, b)
+            @test @wrappedallocs(nnls!(work)) == 0
+        end
     end
 end
 
@@ -205,7 +213,11 @@ end
     for i in 1:100
         A = randn(m, n)
         b = randn(m)
-        @test @wrappedallocs(nnls!(work, A, b)) == 0
+        if test_allocs
+            @test @wrappedallocs(nnls!(work, A, b)) == 0
+        else
+            nnls!(work, A, b)
+        end
         @test work.x == pyopt[:nnls](A, b)[1]
     end
 
@@ -231,7 +243,11 @@ end
     A = randn(m, n)
     b = randn(m)
     work = NNLSWorkspace(A, b, Int32)
-    @test @wrappedallocs(nnls!(work)) <= 0
+    if test_allocs
+        @test @wrappedallocs(nnls!(work)) <= 0
+    else
+        nnls!(work)
+    end
 end
 
 @testset "nnls vs NonNegLeastSquares" begin
