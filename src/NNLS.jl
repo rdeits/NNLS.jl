@@ -205,7 +205,11 @@ Base.size(v::UnsafeVectorView) = (v.len,)
 Base.getindex(v::UnsafeVectorView, idx) = unsafe_load(v.ptr, idx + v.offset)
 Base.setindex!(v::UnsafeVectorView, value, idx) = unsafe_store!(v.ptr, value, idx + v.offset)
 Base.length(v::UnsafeVectorView) = v.len
-Base.linearindexing{V <: UnsafeVectorView}(::Type{V}) = Base.LinearFast()
+@static if VERSION >= v"0.6-"
+    Base.IndexStyle{V <: UnsafeVectorView}(::Type{V}) = Base.IndexLinear()
+else
+    Base.linearindexing{V <: UnsafeVectorView}(::Type{V}) = Base.LinearFast()
+end
 
 
 @noinline function checkargs(work::NNLSWorkspace)
