@@ -17,7 +17,7 @@ Charles L. Lawson and Richard J. Hanson at Jet Propulsion Laboratory
 "SOLVING LEAST SQUARES PROBLEMS", Prentice-HalL, 1974.
 Revised FEB 1995 to accompany reprinting of the book by SIAM.
 """
-function construct_householder!{T}(u::AbstractVector{T}, up::T)
+function construct_householder!{T}(u::AbstractVector{T}, up::T)::T
     m = length(u)
     if m <= 1
         return up
@@ -26,7 +26,7 @@ function construct_householder!{T}(u::AbstractVector{T}, up::T)
     cl = maximum(abs, u)
     @assert cl > 0
     clinv = 1 / cl
-    sm = zero(eltype(u))
+    sm = zero(T)
     for ui in u
         sm += (ui * clinv)^2
     end
@@ -94,7 +94,7 @@ Revised FEB 1995 to accompany reprinting of the book by SIAM.
       SIG IS COMPUTED LAST TO ALLOW FOR THE POSSIBILITY THAT
       SIG MAY BE IN THE SAME LOCATION AS A OR B .
 """
-function orthogonal_rotmat{T}(a::T, b::T)
+function orthogonal_rotmat{T}(a::T, b::T)::Tuple{T, T, T}
     if abs(a) > abs(b)
         xr = b / a
         yr = sqrt(1 + xr^2)
@@ -334,7 +334,7 @@ function nnls!{T, TI}(work::NNLSWorkspace{T, TI}, max_iter::Integer=(3 * size(wo
             up = construct_householder!(
                 fastview(A, sub2ind(A, nsetp + 1, j), m - nsetp),
                 up)
-            unorm = zero(T)
+            unorm::T = zero(T)
             for l in 1:nsetp
                 unorm += A[l, j]^2
             end
