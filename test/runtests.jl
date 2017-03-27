@@ -2,6 +2,7 @@ using NNLS
 using Base.Test
 import NonNegLeastSquares
 using PyCall
+const pyopt = pyimport_conda("scipy.optimize", "scipy")
 
 run(`gfortran -shared -fPIC -o nnls.so nnls.f`)
 
@@ -188,6 +189,29 @@ end
     end
 end
 
+@testset "nnls workspace reuse" begin
+    srand(200)
+    m = 10
+    n = 20
+    work = NNLSWorkspace(m, n)
+    nnls!(work, randn(m, n), randn(m))
+    for i in 1:100
+        A = randn(m, n)
+        b = randn(m)
+        @test @wrappedallocs(nnls!(work, A, b)) == 0
+        @test work.x == pyopt[:nnls](A, b)[1]
+    end
+
+    m = 20
+    n = 10
+    for i in 1:100
+        A = randn(m, n)
+        b = randn(m)
+        nnls!(work, A, b)
+        @test work.x == pyopt[:nnls](A, b)[1]
+    end
+end
+
 @testset "non-Int Integer workspace" begin
     m = 10
     n = 20
@@ -214,8 +238,6 @@ end
         @test nnls(A, b) ≈ NonNegLeastSquares.nnls(A, b)
     end
 end
-
-const pyopt = pyimport_conda("scipy.optimize", "scipy")
 
 @testset "nnls vs scipy" begin
     srand(5)

@@ -143,20 +143,46 @@ type NNLSWorkspace{T, I <: Integer}
     nsetp::I
 end
 
+function Base.resize!{T}(work::NNLSWorkspace{T}, m::Integer, n::Integer)
+    work.QA = Matrix{T}(m, n)
+    work.Qb = Vector{T}(m)
+    resize!(work.x, n)
+    resize!(work.w, n)
+    resize!(work.zz, m)
+    resize!(work.idx, n)
+end
+
+function load!{T}(work::NNLSWorkspace{T}, A::AbstractMatrix{T}, b::AbstractVector{T})
+    m, n = size(A)
+    @assert size(b) == (m,)
+    if size(work.QA, 1) != m || size(work.QA, 2) != n
+        resize!(work, m, n)
+    end
+    work.QA .= A
+    work.Qb .= b
+    work
+end
+
+function NNLSWorkspace{T, I}(m::Integer, n::Integer, eltype::Type{T}=Float64, indextype::Type{I}=Int)
+    NNLSWorkspace{T, I}(
+        Matrix{T}(m, n), # A
+        Vector{T}(m),    # b
+        zeros(T, n),     # x
+        zeros(T, n),     # w
+        zeros(T, m),     # zz
+        zeros(I, n),     # idx
+        zero(T),         # rnorm
+        zero(I),         # mode
+        zero(I),         # nsetp
+    )
+end
+
 function NNLSWorkspace{T, I}(A::Matrix{T}, b::Vector{T}, indextype::Type{I}=Int)
     m, n = size(A)
     @assert size(b) == (m,)
-    NNLSWorkspace{T, I}(
-        copy(A),      # A
-        copy(b),      # b
-        zeros(T, n),  # x
-        zeros(T, n),  # w
-        zeros(T, m),  # zz
-        zeros(I, n),  # idx
-        zero(T),      # rnorm
-        zero(I),      # mode
-        zero(I),      # nsetp
-    )
+    work = NNLSWorkspace(m, n, T, I)
+    load!(work, A, b)
+    work
 end
 
 """
@@ -214,7 +240,7 @@ GIVEN AN M BY N MATRIX, A, AND AN M-VECTOR, B,  COMPUTE AN
 N-VECTOR, X, THAT SOLVES THE LEAST SQUARES PROBLEM   
                  A * X = B  SUBJECT TO X .GE. 0   
 """
-function nnls!{T, TI}(work::NNLSWorkspace{T, TI}, itermax::Integer=(3 * size(work.QA, 2)))
+function nnls!{T, TI}(work::NNLSWorkspace{T, TI}, max_iter::Integer=(3 * size(work.QA, 2)))
     checkargs(work)
 
     A = work.QA
@@ -355,7 +381,7 @@ function nnls!{T, TI}(work::NNLSWorkspace{T, TI}, itermax::Integer=(3 * size(wor
         # ITERATION COUNTER.   
         while true
             iter += 1
-            if iter > itermax
+            if iter > max_iter
                 work.mode = 3
                 terminated = true
                 println("NNLS quitting on iteration count")
@@ -474,9 +500,15 @@ function nnls!{T, TI}(work::NNLSWorkspace{T, TI}, itermax::Integer=(3 * size(wor
     return work.x
 end
 
-function nnls{T}(A::DenseMatrix{T}, b::DenseVector{T}, itermax=(3 * size(A, 2)))
+function nnls!{T}(work::NNLSWorkspace{T}, A::AbstractMatrix{T}, b::AbstractVector{T}, max_iter=(3 * size(A, 2)))
+    load!(work, A, b)
+    nnls!(work, max_iter)
+    work.x
+end
+
+function nnls{T}(A::DenseMatrix{T}, b::DenseVector{T}, max_iter=(3 * size(A, 2)))
     work = NNLSWorkspace(A, b)
-    nnls!(work, itermax)
+    nnls!(work, max_iter)
     work.x
 end
 
