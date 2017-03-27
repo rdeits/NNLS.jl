@@ -11,6 +11,8 @@ notifications:
 
 before_install:
   - export PYTHON=""
+  - if [[ "$TRAVIS_OS_NAME" == "osx"   ]]; then brew install gfortran            ; fi
+  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then sudo apt-get install gfortran -y ; fi
 
 after_success:
   # push coverage results to Codecov
