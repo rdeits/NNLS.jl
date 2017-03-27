@@ -12,6 +12,14 @@ This package implements the non-negative least squares solver from Lawson and Ha
 
 The code contained here is a direct port of the original Fortran code to Julia.
 
+# Usage
+
+```julia
+A = randn(100, 200)
+b = randn(100)
+x = nnls(A, b)
+```
+
 # Reducing memory allocation
 
 The NNLS implementation (and the Fortran code on which it is based) have been implemented to allocate as little memory as possible. If you want direct control over the memory usage, you can pre-allocate an `NNLSWorkspace` which will hold all data used in the NNLS algorithm:
