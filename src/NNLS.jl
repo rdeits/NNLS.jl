@@ -4,7 +4,8 @@ module NNLS
 
 export nnls,
        nnls!,
-       NNLSWorkspace
+       NNLSWorkspace,
+       load!
 
 """
 CONSTRUCTION AND/OR APPLICATION OF A SINGLE
