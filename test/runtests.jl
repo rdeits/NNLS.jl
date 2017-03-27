@@ -4,7 +4,12 @@ import NonNegLeastSquares
 using PyCall
 const pyopt = pyimport_conda("scipy.optimize", "scipy")
 
-run(`gfortran -shared -fPIC -o nnls.so nnls.f`)
+const libnnls = joinpath(dirname(@__FILE__), "libnnls")
+libnnls_path = libnnls * "." * Libdl.dlext
+
+run(`gfortran -shared -fPIC -o $libnnls_path nnls.f`)
+
+@test isfile(libnnls_path)
 
 macro wrappedallocs(expr)
     argnames = [gensym() for a in expr.args]
@@ -27,12 +32,12 @@ function h1_reference!(u::DenseVector)
     ice = 1
     icv = 1
     ncv = 0
-    ccall((:h12_, "nnls.so"), Void,
-        (Ref{Cint}, Ref{Cint}, Ref{Cint}, Ref{Cint}, 
-         Ref{Cdouble}, Ref{Cint}, Ref{Cdouble}, 
+    ccall((:h12_, libnnls), Void,
+        (Ref{Cint}, Ref{Cint}, Ref{Cint}, Ref{Cint},
+         Ref{Cdouble}, Ref{Cint}, Ref{Cdouble},
          Ref{Cdouble}, Ref{Cint}, Ref{Cint}, Ref{Cint}),
-        mode, lpivot, l1, m, 
-        u, iue, up, 
+        mode, lpivot, l1, m,
+        u, iue, up,
         c, ice, icv, ncv)
     return up[]
 end
@@ -47,12 +52,12 @@ function h2_reference!{T}(u::DenseVector{T}, up::T, c::DenseVector{T})
     ice = 1
     icv = m
     ncv = 1
-    ccall((:h12_, "nnls.so"), Void,
-        (Ref{Cint}, Ref{Cint}, Ref{Cint}, Ref{Cint}, 
-         Ref{Cdouble}, Ref{Cint}, Ref{Cdouble}, 
+    ccall((:h12_, libnnls), Void,
+        (Ref{Cint}, Ref{Cint}, Ref{Cint}, Ref{Cint},
+         Ref{Cdouble}, Ref{Cint}, Ref{Cdouble},
          Ref{Cdouble}, Ref{Cint}, Ref{Cint}, Ref{Cint}),
-        mode, lpivot, l1, m, 
-        u, iue, up, 
+        mode, lpivot, l1, m,
+        u, iue, up,
         c, ice, icv, ncv)
 end
 
@@ -60,8 +65,8 @@ function g1_reference(a, b)
     c = Ref{Float64}()
     s = Ref{Float64}()
     sig = Ref{Float64}()
-    ccall((:g1_, "nnls.so"), Void, 
-        (Ref{Float64}, Ref{Float64}, Ref{Float64}, Ref{Float64}, Ref{Float64}), 
+    ccall((:g1_, libnnls), Void,
+        (Ref{Float64}, Ref{Float64}, Ref{Float64}, Ref{Float64}, Ref{Float64}),
         a, b, c, s, sig)
     return c[], s[], sig[]
 end
@@ -75,7 +80,7 @@ function nnls_reference!(work::NNLSWorkspace{Cdouble, Cint})
     mda = m
     mode = Ref{Cint}()
     rnorm = Ref{Cdouble}()
-    ccall((:nnls_, "nnls.so"), Void,
+    ccall((:nnls_, libnnls), Void,
           (Ref{Cdouble}, Ref{Cint}, Ref{Cint}, Ref{Cint}, # A, mda, m, n
            Ref{Cdouble}, # b
            Ref{Cdouble}, # x
@@ -85,7 +90,7 @@ function nnls_reference!(work::NNLSWorkspace{Cdouble, Cint})
            Ref{Cint},    # idx
            Ref{Cint}),    # mode
           A, mda, m, n,
-          b, 
+          b,
           work.x,
           rnorm,
           work.w,
@@ -103,10 +108,10 @@ end
     srand(1)
     for i in 1:100000
         u = randn(rand(3:10))
-        
+
         u1 = copy(u)
         up1 = NNLS.construct_householder!(u1, 0.0)
-        
+
         u2 = copy(u)
         up2 = h1_reference!(u2)
         @test up1 == up2
@@ -119,17 +124,17 @@ end
     for i in 1:10000
         u = randn(rand(3:10))
         c = randn(length(u))
-        
+
         u1 = copy(u)
         c1 = copy(c)
         up1 = NNLS.construct_householder!(u1, 0.0)
         NNLS.apply_householder!(u1, up1, c1)
-        
+
         u2 = copy(u)
         c2 = copy(c)
         up2 = h1_reference!(u2)
         h2_reference!(u2, up2, c2)
-        
+
         @test up1 == up2
         @test u1 == u2
         @test c1 == c2
