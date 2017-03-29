@@ -7,8 +7,8 @@ const pyopt_nnls = pyimport_conda("scipy.optimize", "scipy")[:nnls]
 
 function runbenchmarks()
     srand(1)
-    println("M\tN\tt_nnls\tt_non_neg_least_squares")
-    for m in 10:20:70
+    println("M\tN\tt_nnls\tt_nnls_with_workspace_reuse")
+    for m in 50:50:250
         for n_over_m in [0.5, 1, 2]
             n = round(Int, m * n_over_m)
             inputs = [(randn(m, n), randn(m)) for i in 1:50]
@@ -30,8 +30,9 @@ function runbenchmarks()
                 end
             end
             x2, t2, m2, gc2, mem2 = @timed begin
+                work = NNLSWorkspace(m, n)
                 for (A, b) in inputs
-                    NonNegLeastSquares.nnls(A, b)
+                    nnls!(work, A, b)
                 end
             end
             # @show (t0, t1, t2)
