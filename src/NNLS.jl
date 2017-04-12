@@ -218,13 +218,19 @@ allocating lots of memory elsewhere, so creating a new View is fine.
 This function looks type-unstable, but the isbits(T) test can be evaluated
 by the compiler, so the result is actually type-stable.
 """
-function fastview{T}(parent::DenseArray{T}, start_ind::Integer, len::Integer)
+function fastview{T}(parent::Array{T}, start_ind::Integer, len::Integer)
     if isbits(T)
         UnsafeVectorView(parent, start_ind, len)
     else
         @view(parent[start_ind:(start_ind + len - 1)])
     end
 end
+
+"""
+Fallback for non-contiguous arrays, for which UnsafeVectorView does not make
+sense.
+"""
+fastview(parent::AbstractArray, start_ind::Integer, len::Integer) = @view(parent[start_ind:(start_ind + len - 1)])
 
 @noinline function checkargs(work::NNLSWorkspace)
     m, n = size(work.QA)
