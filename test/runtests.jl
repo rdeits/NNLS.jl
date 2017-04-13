@@ -2,7 +2,7 @@ using NNLS
 using Base.Test
 import NonNegLeastSquares
 using PyCall
-using SCS
+using ECOS
 using JuMP
 
 const pyopt = pyimport_conda("scipy.optimize", "scipy")
@@ -190,7 +190,7 @@ end
         b = randn(m)
 
         work1 = NNLSWorkspace(A, b)
-        nnls!(work1)
+        solve!(work1)
 
         work2 = NNLSWorkspace(A, b, Cint)
         nnls_reference!(work2)
@@ -215,7 +215,7 @@ if test_allocs
             A = randn(m, n)
             b = randn(m)
             work = NNLSWorkspace(A, b)
-            @test @wrappedallocs(nnls!(work)) == 0
+            @test @wrappedallocs(solve!(work)) == 0
         end
     end
 end
@@ -225,14 +225,14 @@ end
     m = 10
     n = 20
     work = NNLSWorkspace(m, n)
-    nnls!(work, randn(m, n), randn(m))
+    solve!(work, randn(m, n), randn(m))
     for i in 1:100
         A = randn(m, n)
         b = randn(m)
         if test_allocs
-            @test @wrappedallocs(nnls!(work, A, b)) == 0
+            @test @wrappedallocs(solve!(work, A, b)) == 0
         else
-            nnls!(work, A, b)
+            solve!(work, A, b)
         end
         @test work.x == pyopt[:nnls](A, b)[1]
     end
@@ -242,7 +242,7 @@ end
     for i in 1:100
         A = randn(m, n)
         b = randn(m)
-        nnls!(work, A, b)
+        solve!(work, A, b)
         @test work.x == pyopt[:nnls](A, b)[1]
     end
 end
@@ -254,15 +254,15 @@ end
     b = randn(m)
     work = NNLSWorkspace(A, b, Int32)
     # Compile
-    nnls!(work)
+    solve!(work)
 
     A = randn(m, n)
     b = randn(m)
     work = NNLSWorkspace(A, b, Int32)
     if test_allocs
-        @test @wrappedallocs(nnls!(work)) <= 0
+        @test @wrappedallocs(solve!(work)) <= 0
     else
-        nnls!(work)
+        solve!(work)
     end
 end
 
@@ -336,7 +336,7 @@ end
 function quadprog_scs(Q, c, G, g)
     n = length(c)
     q = length(g)
-    m = Model(solver=SCSSolver(verbose = 0))
+    m = Model(solver = ECOSSolver(verbose = false))
     @variable m z[1 : n]
     constr = @constraint m G * z .<= g
     @variable m slack >= 0

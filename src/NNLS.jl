@@ -3,7 +3,6 @@ __precompile__()
 module NNLS
 
 export nnls,
-       nnls!,
        solve!,
        NNLSWorkspace,
        QPWorkspace,
@@ -270,7 +269,7 @@ GIVEN AN M BY N MATRIX, A, AND AN M-VECTOR, B,  COMPUTE AN
 N-VECTOR, X, THAT SOLVES THE LEAST SQUARES PROBLEM
                  A * X = B  SUBJECT TO X .GE. 0
 """
-function nnls!{T, TI}(work::NNLSWorkspace{T, TI}, max_iter::Integer=(3 * size(work.QA, 2)))
+function solve!{T, TI}(work::NNLSWorkspace{T, TI}, max_iter::Integer=(3 * size(work.QA, 2)))
     checkargs(work)
 
     A = work.QA
@@ -530,15 +529,15 @@ function nnls!{T, TI}(work::NNLSWorkspace{T, TI}, max_iter::Integer=(3 * size(wo
     return work.x
 end
 
-function nnls!{T}(work::NNLSWorkspace{T}, A::AbstractMatrix{T}, b::AbstractVector{T}, max_iter=(3 * size(A, 2)))
+function solve!{T}(work::NNLSWorkspace{T}, A::AbstractMatrix{T}, b::AbstractVector{T}, max_iter=(3 * size(A, 2)))
     load!(work, A, b)
-    nnls!(work, max_iter)
+    solve!(work, max_iter)
     work.x
 end
 
 function nnls{T}(A::DenseMatrix{T}, b::DenseVector{T}, max_iter=(3 * size(A, 2)))
     work = NNLSWorkspace(A, b)
-    nnls!(work, max_iter)
+    solve!(work, max_iter)
     work.x
 end
 
@@ -548,6 +547,12 @@ end
 # applications to embedded model predictive control", IEEE Transactions on
 # Automatic Control, 2016.
 # Variable names match the paper wherever possible
+
+@static if VERSION < v"0.6-"
+    typealias AllColsSubArray{T} SubArray{T,2,Array{T,2},Tuple{UnitRange{Int},Colon},false}
+else
+    const AllColsSubArray{T} = SubArray{T,2,Array{T,2},Tuple{UnitRange{Int},Base.Slice{Base.OneTo{Int}}},false}
+end
 
 type QPWorkspace{T<:LinAlg.BlasReal, I}
     # Variables from paper:
@@ -562,8 +567,8 @@ type QPWorkspace{T<:LinAlg.BlasReal, I}
     # Additional variables:
     e::Vector{T} # intermediate variable
     A::Matrix{T} # 'A'-matrix of NNLS problem
-    AM::SubArray{T,2,Array{T,2},Tuple{UnitRange{Int},Colon},false} # upper block of A
-    Ad::SubArray{T,2,Array{T,2},Tuple{UnitRange{Int},Colon},false} # last row of A
+    AM::AllColsSubArray{T} # upper block of A
+    Ad::AllColsSubArray{T} # last row of A
     b::Vector{T} # 'b'-vector of NNLS problem
     nnlswork::NNLSWorkspace{T, I}
     status::Symbol
@@ -604,13 +609,12 @@ function load!{T}(work::QPWorkspace{T}, Q::AbstractMatrix{T}, c::AbstractVector{
     nothing
 end
 
-# TODO: resize!?
 """
     solve!(work::QPWorkspace)
 
-Solve the QP that was loaded into `work` using load!.
+Solve the QP that was loaded into `work` using `load!`.
 """
-function solve!{T}(work::QPWorkspace{T}, eps_infeasible = 1e-4) # TODO: method name? Maybe change nnls! to solve! too?
+function solve!{T}(work::QPWorkspace{T}, eps_infeasible = 1e-4)
     work.status == :Unsolved || error("Problem was already solved.")
 
     L = work.L
@@ -651,7 +655,7 @@ function solve!{T}(work::QPWorkspace{T}, eps_infeasible = 1e-4) # TODO: method n
 
     # Solve the NNLS
     load!(nnlswork, A, b)
-    nnls!(nnlswork)
+    solve!(nnlswork)
     y = nnlswork.x
 
     # Compute the residual

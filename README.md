@@ -29,18 +29,18 @@ A = randn(100, 200)
 b = randn(100)
 
 work = NNLSWorkspace(A, b)
-nnls!(work)
+solve!(work)
 @show work.x
 ```
 
-The call to `nnls!(work)` should allocate no memory. You can re-use the same workspace multiple times:
+The call to `solve!(work)` should allocate no memory. You can re-use the same workspace multiple times:
 
 ```julia
 A2 = randn(100, 200)
 b2 = randn(100)
 
 load!(work, A2, b2)
-nnls!(work)
+solve!(work)
 @show work.x
 ```
 

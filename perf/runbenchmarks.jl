@@ -32,7 +32,7 @@ function runbenchmarks()
             x2, t2, m2, gc2, mem2 = @timed begin
                 work = NNLSWorkspace(m, n)
                 for (A, b) in inputs
-                    nnls!(work, A, b)
+                    solve!(work, A, b)
                 end
             end
             # @show (t0, t1, t2)
