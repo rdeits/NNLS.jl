@@ -566,6 +566,7 @@ type QPWorkspace{T<:LinAlg.BlasReal, I}
     Ad::SubArray{T,2,Array{T,2},Tuple{UnitRange{Int},Colon},false} # last row of A
     b::Vector{T} # 'b'-vector of NNLS problem
     nnlswork::NNLSWorkspace{T, I}
+    status::Symbol
 
     function QPWorkspace(n::Integer, q::Integer)
         L = Matrix{T}(n, n)
@@ -581,7 +582,8 @@ type QPWorkspace{T<:LinAlg.BlasReal, I}
         Ad = view(A, n + 1 : n + 1, :)
         b = Vector{T}(n + 1)
         work = NNLSWorkspace{T, I}(size(A)...)
-        new{T, I}(L, c, G, g, M, d, r, e, A, AM, Ad, b, work)
+        status = :Unsolved
+        new{T, I}(L, c, G, g, M, d, r, e, A, AM, Ad, b, work, status)
     end
 end
 
@@ -598,6 +600,7 @@ function load!{T}(work::QPWorkspace{T}, Q::AbstractMatrix{T}, c::AbstractVector{
     work.c .= c
     work.G .= G
     work.g .= g
+    work.status = :Unsolved
     nothing
 end
 
@@ -608,6 +611,8 @@ end
 Solve the QP that was loaded into `work` using load!.
 """
 function solve!{T}(work::QPWorkspace{T}, eps_infeasible = 1e-4) # TODO: method name? Maybe change nnls! to solve! too?
+    work.status == :Unsolved || error("Problem was already solved.")
+
     L = work.L
     c = work.c
     G = work.G
@@ -640,7 +645,7 @@ function solve!{T}(work::QPWorkspace{T}, eps_infeasible = 1e-4) # TODO: method n
     scale!(A, -1)
 
     # Populate b
-    γ = 1 + norm(d, 1)
+    γ = one(T)
     b[:] = 0
     b[end] = γ
 
@@ -654,13 +659,22 @@ function solve!{T}(work::QPWorkspace{T}, eps_infeasible = 1e-4) # TODO: method n
     LinAlg.BLAS.gemv!('N', 1., A, y, -1., r) # r <- A * y - b
 
     # Check for feasibility
-    sum(abs, r) < eps_infeasible && error("Infeasible")
+    work.status = sum(abs, r) < eps_infeasible ? :Infeasible : :Optimal
 
-    # Back out solution to QP
+    # Back out solution and dual
     z = c
-    LinAlg.BLAS.gemv!('T', -1 / (γ + d ⋅ y), G, y, -1., c) # z <- -1 / (γ + d ⋅ y) G^ᵀ y - c
-    LinAlg.LAPACK.potrs!('U', L, z)
-    z
+    λ = y
+    if work.status == :Optimal
+        # Note: r[end] == -(γ + d ⋅ y)
+        LinAlg.BLAS.gemv!('T', 1 / r[end], G, y, -1., c) # z <- -1 / (γ + d ⋅ y) G^ᵀ y - c
+        LinAlg.LAPACK.potrs!('U', L, z)
+        scale!(λ, -1 / sqrt(-r[end])) # the sqrt appears to be missing in (12) in the paper
+    else
+        fill!(z, NaN)
+        fill!(λ, NaN)
+    end
+
+    z, λ
 end
 
 end # module

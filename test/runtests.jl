@@ -322,43 +322,47 @@ function quadprog_bemporad_simple(Q, c, G, g)
     b = [zeros(n); γ]
     y = nnls(A, b)
     r = A * y - b
-    infeasible = sum(abs, r) < 1e-7
+    status = sum(abs, r) < 1e-7 ? :Infeasible : :Optimal
     z = - inv(Q) * (c + 1 / (γ + d ⋅ y) * G' * y)
 
     @assert isapprox(L[:U]' * L[:U], Q; rtol = 1e-4)
     @assert isapprox(G * inv(L[:U]), M; rtol = 1e-4)
     @assert isapprox(g + G * (Q \ c), d; rtol = 1e-4)
 
-    infeasible, z
+    status, z
 end
 
 # Solve quadratic program with SCS (use trick from http://www.seas.ucla.edu/~vandenbe/publications/socp.pdf)
 function quadprog_scs(Q, c, G, g)
-    n = size(Q, 1)
+    n = length(c)
+    q = length(g)
     m = Model(solver=SCSSolver(verbose = 0))
     @variable m z[1 : n]
-    @constraint m G * z .<= g
+    constr = @constraint m G * z .<= g
     @variable m slack >= 0
     P = sqrtm(Q)
     @constraint m norm(P * z + P \ c) <= slack
     @objective m Min slack
     status = solve(m, suppress_warnings = true)
-    status, status == :Optimal ? getvalue(z) : fill(NaN, n)
+    z = status == :Optimal ? getvalue(z) : fill(NaN, n)
+    λ = status == :Optimal ? getdual(constr) : fill(NaN, q)
+    status, z, λ
 end
 
 function qp_test(work, Q, c, G, g)
-    status_scs, z_scs = quadprog_scs(Q, c, G, g)
-    infeasible_basic, z_basic = quadprog_bemporad_simple(Q, c, G, g)
-    norminf = x -> norm(x, Inf)
+    status_scs, z_scs, λ_scs = quadprog_scs(Q, c, G, g)
+    status_basic, z_basic = quadprog_bemporad_simple(Q, c, G, g)
     load!(work, Q, c, G, g)
-    if status_scs != :Optimal
-        @test infeasible_basic
-        @test_throws ErrorException solve!(work)
-    else
-        z = solve!(work)
-        @test !infeasible_basic
+    z, λ = solve!(work)
+
+    norminf = x -> norm(x, Inf)
+    @test status_scs == status_basic
+    @test status_scs == work.status
+
+    if work.status == :Optimal
         @test isapprox(z_basic, z; norm = norminf, atol = 1e-2)
         @test isapprox(z_scs, z; norm = norminf, atol = 5e-2)
+        @test isapprox(λ_scs, λ; norm = norminf, atol = 5e-2)
     end
 end
 
