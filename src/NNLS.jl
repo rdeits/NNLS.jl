@@ -4,7 +4,9 @@ module NNLS
 
 export nnls,
        nnls!,
+       solve!,
        NNLSWorkspace,
+       QPWorkspace,
        load!
 
 """
@@ -177,7 +179,7 @@ function load!{T}(work::NNLSWorkspace{T}, A::AbstractMatrix{T}, b::AbstractVecto
 end
 
 NNLSWorkspace{T, I}(m::Integer, n::Integer,
-                    eltype::Type{T}=Float64, 
+                    eltype::Type{T}=Float64,
                     indextype::Type{I}=Int) = NNLSWorkspace{T, I}(m, n)
 
 function NNLSWorkspace{T, I}(A::Matrix{T}, b::Vector{T}, indextype::Type{I}=Int)
@@ -538,6 +540,127 @@ function nnls{T}(A::DenseMatrix{T}, b::DenseVector{T}, max_iter=(3 * size(A, 2))
     work = NNLSWorkspace(A, b)
     nnls!(work, max_iter)
     work.x
+end
+
+
+# Implementation of an NNLS-based QP solver, based on section II of  Bemporad,
+# "A quadratic programming algorithm based on nonnegative least squares with
+# applications to embedded model predictive control", IEEE Transactions on
+# Automatic Control, 2016.
+# Variable names match the paper wherever possible
+
+type QPWorkspace{T<:LinAlg.BlasReal, I}
+    # Variables from paper:
+    L::Matrix{T}
+    c::Vector{T}
+    G::Matrix{T}
+    g::Vector{T}
+    M::Matrix{T}
+    d::Vector{T}
+    r::Vector{T}
+
+    # Additional variables:
+    e::Vector{T} # intermediate variable
+    A::Matrix{T} # 'A'-matrix of NNLS problem
+    AM::SubArray{T,2,Array{T,2},Tuple{UnitRange{Int},Colon},false} # upper block of A
+    Ad::SubArray{T,2,Array{T,2},Tuple{UnitRange{Int},Colon},false} # last row of A
+    b::Vector{T} # 'b'-vector of NNLS problem
+    nnlswork::NNLSWorkspace{T, I}
+
+    function QPWorkspace(n::Integer, q::Integer)
+        L = Matrix{T}(n, n)
+        c = Vector{T}(n)
+        G = Matrix{T}(q, n)
+        g = Vector{T}(q)
+        M = Matrix{T}(q, n)
+        d = Vector{T}(q)
+        r = Vector{T}(n + 1)
+        e = Vector{T}(n)
+        A = Matrix{T}(n + 1, q)
+        AM = view(A, 1 : n, :)
+        Ad = view(A, n + 1 : n + 1, :)
+        b = Vector{T}(n + 1)
+        work = NNLSWorkspace{T, I}(size(A)...)
+        new{T, I}(L, c, G, g, M, d, r, e, A, AM, Ad, b, work)
+    end
+end
+
+"""
+    load!(work::QPWorkspace, Q, c, G, g)
+
+Load problem data for the QP
+
+Minimize ``\\frac{1}{2} z' Q z + c' z``
+Subject to ``G z \\leq g``
+"""
+function load!{T}(work::QPWorkspace{T}, Q::AbstractMatrix{T}, c::AbstractVector{T}, G::AbstractMatrix{T}, g::AbstractVector{T})
+    work.L .= Q
+    work.c .= c
+    work.G .= G
+    work.g .= g
+    nothing
+end
+
+# TODO: resize!?
+"""
+    solve!(work::QPWorkspace)
+
+Solve the QP that was loaded into `work` using load!.
+"""
+function solve!{T}(work::QPWorkspace{T}) # TODO: method name? Maybe change nnls! to solve! too?
+    L = work.L
+    c = work.c
+    G = work.G
+    g = work.g
+    M = work.M
+    d = work.d
+    e = work.e
+    A = work.A
+    AM = work.AM
+    Ad = work.Ad
+    b = work.b
+    r = work.r
+    nnlswork = work.nnlswork
+
+    # Compute M
+    LinAlg.LAPACK.potrf!('U', L) # L <- upper cholesky factor of Q
+    M .= G
+    LinAlg.BLAS.trsm!('R', 'U', 'N', 'N', 1., L, M) # M <- G L⁻¹
+
+    # Compute d
+    e .= c
+    LinAlg.LAPACK.potrs!('U', L, e) # e <- Q⁻¹ c
+
+    d .= g
+    LinAlg.BLAS.gemv!('N', 1., G, e, 1., d) # d <- g + G Q⁻¹ c
+
+    # Populate A
+    transpose!(AM, M)
+    transpose!(Ad, d)
+    scale!(A, -1)
+
+    # Populate b
+    γ = 1.
+    b[:] = 0
+    b[end] = γ
+
+    # Solve the NNLS
+    load!(nnlswork, A, b)
+    nnls!(nnlswork)
+    y = nnlswork.x
+
+    # Compute the residual
+    r = b
+    LinAlg.BLAS.gemv!('N', 1., A, y, -1., r) # r <- A * y - b
+
+    # Check for feasibility
+    sum(abs, r) < eps(T) && error("Infeasible")
+
+    # Back out solution to QP
+    z = c
+    LinAlg.BLAS.gemv!('T', -1 / (γ + d ⋅ y), G, y, -1., c) # z <- -1 / (γ + d ⋅ y) G^ᵀ y - c
+    LinAlg.LAPACK.potrs!('U', L, z)
+    z
 end
 
 end # module

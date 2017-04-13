@@ -287,3 +287,54 @@ end
         @test x1 == x2
     end
 end
+
+# More straightforward, less efficient implementation of the paper
+function qptestsolve(Q, c, G, g)
+    n = size(Q, 1)
+    T = Float64
+    L = cholfact(Q, :U)
+    M = G / L[:U]
+    e = (L \ c)
+    d = g + G * e
+    γ = 1
+    A = [-M'; -d']
+    b = [zeros(n); γ]
+    y = nnls(A, b)
+    r = A * y - b
+    infeasible = sum(abs, r) < eps(T)
+    z = - inv(Q) * (c + 1 / (γ + d ⋅ y) * G' * y)
+
+    @assert isapprox(L[:U]' * L[:U], Q; rtol = 1e-4)
+    @assert isapprox(G * inv(L[:U]), M; rtol = 1e-4)
+    @assert isapprox(g + G * (Q \ c), d; rtol = 1e-4)
+
+    infeasible, z
+end
+
+function rand_qp_data(n, q)
+    Q = rand(n, n)
+    Q = Q * Q'
+    c = rand(n)
+    G = rand(q, n)
+    g = rand(q)
+    Q, c, G, g
+end
+
+@testset "qp" begin
+    srand(5)
+    n = 100
+    q = 50
+    work = QPWorkspace{Float64, Int}(n, q);
+    for i = 1 : 50
+        Q, c, G, g = rand_qp_data(n, q)
+        infeasible, zcheck = qptestsolve(Q, c, G, g)
+        load!(work, Q, c, G, g)
+        if infeasible
+            @test_throws ErrorException solve!(work)
+        else
+            z = solve!(work)
+            @test isapprox(zcheck, z; rtol = 1e-4)
+            @test all(G * z .≤ g + 1e-4)
+        end
+    end
+end
