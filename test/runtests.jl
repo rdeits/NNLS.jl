@@ -2,6 +2,9 @@ using NNLS
 using Base.Test
 import NonNegLeastSquares
 using PyCall
+using SCS
+using JuMP
+
 const pyopt = pyimport_conda("scipy.optimize", "scipy")
 
 const libnnls = joinpath(dirname(@__FILE__), "libnnls")
@@ -288,8 +291,26 @@ end
     end
 end
 
+function rand_qp_data(n, q)
+    Q = randn(n, n)
+    Q = Q * Q'
+    c = randn(n)
+    G = randn(q, n)
+    g = randn(q)
+    Q, c, G, g
+end
+
+function rand_infeasible_qp_data(n, q)
+    Q, c, G, g = rand_qp_data(n, q - 1)
+    index = rand(1 : q - 1)
+    Gi = G[index, :]'
+    G = [G; -Gi]
+    g = [g; -g[index] - 100]
+    Q, c, G, g
+end
+
 # More straightforward, less efficient implementation of the paper
-function qptestsolve(Q, c, G, g)
+function quadprog_bemporad_simple(Q, c, G, g)
     n = size(Q, 1)
     T = Float64
     L = cholfact(Q, :U)
@@ -301,7 +322,7 @@ function qptestsolve(Q, c, G, g)
     b = [zeros(n); γ]
     y = nnls(A, b)
     r = A * y - b
-    infeasible = sum(abs, r) < eps(T)
+    infeasible = sum(abs, r) < 1e-7
     z = - inv(Q) * (c + 1 / (γ + d ⋅ y) * G' * y)
 
     @assert isapprox(L[:U]' * L[:U], Q; rtol = 1e-4)
@@ -311,30 +332,46 @@ function qptestsolve(Q, c, G, g)
     infeasible, z
 end
 
-function rand_qp_data(n, q)
-    Q = rand(n, n)
-    Q = Q * Q'
-    c = rand(n)
-    G = rand(q, n)
-    g = rand(q)
-    Q, c, G, g
+# Solve quadratic program with SCS (use trick from http://www.seas.ucla.edu/~vandenbe/publications/socp.pdf)
+function quadprog_scs(Q, c, G, g)
+    n = size(Q, 1)
+    m = Model(solver=SCSSolver(verbose = 0))
+    @variable m z[1 : n]
+    @constraint m G * z .<= g
+    @variable m slack >= 0
+    P = sqrtm(Q)
+    @constraint m norm(P * z + P \ c) <= slack
+    @objective m Min slack
+    status = solve(m, suppress_warnings = true)
+    status, status == :Optimal ? getvalue(z) : fill(NaN, n)
+end
+
+function qp_test(work, Q, c, G, g)
+    status_scs, z_scs = quadprog_scs(Q, c, G, g)
+    infeasible_basic, z_basic = quadprog_bemporad_simple(Q, c, G, g)
+    norminf = x -> norm(x, Inf)
+    load!(work, Q, c, G, g)
+    if status_scs != :Optimal
+        @test infeasible_basic
+        @test_throws ErrorException solve!(work)
+    else
+        z = solve!(work)
+        @test !infeasible_basic
+        @test isapprox(z_basic, z; norm = norminf, atol = 1e-2)
+        @test isapprox(z_scs, z; norm = norminf, atol = 5e-2)
+    end
 end
 
 @testset "qp" begin
-    srand(5)
-    n = 100
-    q = 50
-    work = QPWorkspace{Float64, Int}(n, q);
-    for i = 1 : 50
+    srand(1)
+    n, q = 100, 50
+    work = QPWorkspace{Float64, Int}(n, q)
+    for i = 1 : 100
         Q, c, G, g = rand_qp_data(n, q)
-        infeasible, zcheck = qptestsolve(Q, c, G, g)
-        load!(work, Q, c, G, g)
-        if infeasible
-            @test_throws ErrorException solve!(work)
-        else
-            z = solve!(work)
-            @test isapprox(zcheck, z; rtol = 1e-4)
-            @test all(G * z .≤ g + 1e-4)
-        end
+        qp_test(work, Q, c, G, g)
+    end
+    for j = 1 : 100
+        Q, c, G, g = rand_infeasible_qp_data(n, q)
+        qp_test(work, Q, c, G, g)
     end
 end

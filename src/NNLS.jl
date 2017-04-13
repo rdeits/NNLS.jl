@@ -607,7 +607,7 @@ end
 
 Solve the QP that was loaded into `work` using load!.
 """
-function solve!{T}(work::QPWorkspace{T}) # TODO: method name? Maybe change nnls! to solve! too?
+function solve!{T}(work::QPWorkspace{T}, eps_infeasible = 1e-4) # TODO: method name? Maybe change nnls! to solve! too?
     L = work.L
     c = work.c
     G = work.G
@@ -640,7 +640,7 @@ function solve!{T}(work::QPWorkspace{T}) # TODO: method name? Maybe change nnls!
     scale!(A, -1)
 
     # Populate b
-    γ = 1.
+    γ = 1 + norm(d, 1)
     b[:] = 0
     b[end] = γ
 
@@ -654,7 +654,7 @@ function solve!{T}(work::QPWorkspace{T}) # TODO: method name? Maybe change nnls!
     LinAlg.BLAS.gemv!('N', 1., A, y, -1., r) # r <- A * y - b
 
     # Check for feasibility
-    sum(abs, r) < eps(T) && error("Infeasible")
+    sum(abs, r) < eps_infeasible && error("Infeasible")
 
     # Back out solution to QP
     z = c
