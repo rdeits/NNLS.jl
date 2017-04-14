@@ -2,6 +2,9 @@ using NNLS
 using Base.Test
 import NonNegLeastSquares
 using PyCall
+using ECOS
+using JuMP
+
 const pyopt = pyimport_conda("scipy.optimize", "scipy")
 
 const libnnls = joinpath(dirname(@__FILE__), "libnnls")
@@ -187,7 +190,7 @@ end
         b = randn(m)
 
         work1 = NNLSWorkspace(A, b)
-        nnls!(work1)
+        solve!(work1)
 
         work2 = NNLSWorkspace(A, b, Cint)
         nnls_reference!(work2)
@@ -212,7 +215,7 @@ if test_allocs
             A = randn(m, n)
             b = randn(m)
             work = NNLSWorkspace(A, b)
-            @test @wrappedallocs(nnls!(work)) == 0
+            @test @wrappedallocs(solve!(work)) == 0
         end
     end
 end
@@ -222,14 +225,14 @@ end
     m = 10
     n = 20
     work = NNLSWorkspace(m, n)
-    nnls!(work, randn(m, n), randn(m))
+    solve!(work, randn(m, n), randn(m))
     for i in 1:100
         A = randn(m, n)
         b = randn(m)
         if test_allocs
-            @test @wrappedallocs(nnls!(work, A, b)) == 0
+            @test @wrappedallocs(solve!(work, A, b)) == 0
         else
-            nnls!(work, A, b)
+            solve!(work, A, b)
         end
         @test work.x == pyopt[:nnls](A, b)[1]
     end
@@ -239,7 +242,7 @@ end
     for i in 1:100
         A = randn(m, n)
         b = randn(m)
-        nnls!(work, A, b)
+        solve!(work, A, b)
         @test work.x == pyopt[:nnls](A, b)[1]
     end
 end
@@ -251,15 +254,15 @@ end
     b = randn(m)
     work = NNLSWorkspace(A, b, Int32)
     # Compile
-    nnls!(work)
+    solve!(work)
 
     A = randn(m, n)
     b = randn(m)
     work = NNLSWorkspace(A, b, Int32)
     if test_allocs
-        @test @wrappedallocs(nnls!(work)) <= 0
+        @test @wrappedallocs(solve!(work)) <= 0
     else
-        nnls!(work)
+        solve!(work)
     end
 end
 
@@ -285,5 +288,94 @@ end
         x1 = nnls(A, b)
         x2, residual2 = pyopt[:nnls](A, b)
         @test x1 == x2
+    end
+end
+
+function rand_qp_data(n, q)
+    Q = randn(n, n)
+    Q = Q * Q'
+    c = randn(n)
+    G = randn(q, n)
+    g = randn(q)
+    Q, c, G, g
+end
+
+function rand_infeasible_qp_data(n, q)
+    Q, c, G, g = rand_qp_data(n, q - 1)
+    index = rand(1 : q - 1)
+    Gi = G[index, :]'
+    G = [G; -Gi]
+    g = [g; -g[index] - 100]
+    Q, c, G, g
+end
+
+# More straightforward, less efficient implementation of the paper
+function quadprog_bemporad_simple(Q, c, G, g)
+    n = size(Q, 1)
+    T = Float64
+    L = cholfact(Q, :U)
+    M = G / L[:U]
+    e = (L \ c)
+    d = g + G * e
+    γ = 1
+    A = [-M'; -d']
+    b = [zeros(n); γ]
+    y = nnls(A, b)
+    r = A * y - b
+    status = sum(abs, r) < 1e-7 ? :Infeasible : :Optimal
+    z = - inv(Q) * (c + 1 / (γ + d ⋅ y) * G' * y)
+
+    @assert isapprox(L[:U]' * L[:U], Q; rtol = 1e-4)
+    @assert isapprox(G * inv(L[:U]), M; rtol = 1e-4)
+    @assert isapprox(g + G * (Q \ c), d; rtol = 1e-4)
+
+    status, z
+end
+
+# Solve quadratic program with SCS (use trick from http://www.seas.ucla.edu/~vandenbe/publications/socp.pdf)
+function quadprog_scs(Q, c, G, g)
+    n = length(c)
+    q = length(g)
+    m = Model(solver = ECOSSolver(verbose = false))
+    @variable m z[1 : n]
+    constr = @constraint m G * z .<= g
+    @variable m slack >= 0
+    P = sqrtm(Q)
+    @constraint m norm(P * z + P \ c) <= slack
+    @objective m Min slack
+    status = solve(m, suppress_warnings = true)
+    z = status == :Optimal ? getvalue(z) : fill(NaN, n)
+    λ = status == :Optimal ? getdual(constr) : fill(NaN, q)
+    status, z, λ
+end
+
+function qp_test(work, Q, c, G, g)
+    status_scs, z_scs, λ_scs = quadprog_scs(Q, c, G, g)
+    status_basic, z_basic = quadprog_bemporad_simple(Q, c, G, g)
+    load!(work, Q, c, G, g)
+    z, λ = solve!(work)
+
+    norminf = x -> norm(x, Inf)
+    @test status_scs == status_basic
+    @test status_scs == work.status
+
+    if work.status == :Optimal
+        @test isapprox(z_basic, z; norm = norminf, atol = 1e-2)
+        @test isapprox(z_scs, z; norm = norminf, atol = 5e-2)
+        @test isapprox(λ_scs, λ; norm = norminf, atol = 5e-2)
+    end
+end
+
+@testset "qp" begin
+    srand(1)
+    n, q = 100, 50
+    work = QPWorkspace{Float64, Int}(n, q)
+    for i = 1 : 100
+        Q, c, G, g = rand_qp_data(n, q)
+        qp_test(work, Q, c, G, g)
+    end
+    for j = 1 : 100
+        Q, c, G, g = rand_infeasible_qp_data(n, q)
+        qp_test(work, Q, c, G, g)
     end
 end
