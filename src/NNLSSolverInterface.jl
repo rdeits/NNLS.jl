@@ -6,9 +6,6 @@ using NNLS: QPWorkspace, load!, solve!
 importall MathProgBase.SolverInterface
 
 immutable NNLSSolver <: AbstractMathProgSolver
-    workspace::QPWorkspace{Float64, Int}
-
-    NNLSSolver() = new(QPWorkspace{Float64, Int}(0, 0))
 end
 
 type NNLSModel <: AbstractLinearQuadraticModel
@@ -24,10 +21,28 @@ type NNLSModel <: AbstractLinearQuadraticModel
     solution::Vector{Float64}
     duals::Vector{Float64}
 
-    NNLSModel(work::QPWorkspace) = new(work)
+    function NNLSModel()
+        m = new(QPWorkspace{Float64, Int}(0, 0))
+        resize!(m, 0, 0)
+        m
+    end
 end
 
-LinearQuadraticModel(s::NNLSSolver) = NNLSModel(s.workspace)
+function Base.resize!(m::NNLSModel, q::Integer, n::Integer)
+    resize!(m.workspace, q, n)
+    m.lb = zeros(n)
+    m.ub = zeros(n)
+    m.A = zeros(q, n)
+    m.constr_lb = zeros(q)
+    m.constr_ub = zeros(q)
+    m.Q = zeros(n, n)
+    m.q = zeros(n)
+    m.sense = :Min
+    m.solution = fill(NaN, n)
+    m.duals = fill(NaN, q)
+end
+
+LinearQuadraticModel(s::NNLSSolver) = NNLSModel()
 
 numvar(work::QPWorkspace) = size(work.G, 2)
 numconstr(work::QPWorkspace) = size(work.G, 1)
@@ -35,17 +50,21 @@ numconstr(work::QPWorkspace) = size(work.G, 1)
 numvar(m::NNLSModel) = numvar(m.workspace)
 numconstr(m::NNLSModel) = numconstr(m.workspace)
 
-function loadproblem!(m::NNLSModel, A, lb, ub, q, constr_lb, constr_ub, sense)
+function loadproblem!(m::NNLSModel, A, lb, ub, obj, constr_lb, constr_ub, sense)
+    q, n = size(A)
+    if (q != size(m.A, 1)) || (n != size(m.A, 2))
+        resize!(m, q, n)
+    end
     m.sense = sense
-    m.A = copy(A)
-    m.lb = copy(lb)
-    m.ub = copy(ub)
-    m.constr_lb = copy(constr_lb)
-    m.constr_ub = copy(constr_ub)
-    m.q = copy(q)
-    m.Q = zeros(size(A, 2), size(A, 2))
-    m.solution = zeros(size(A, 2))
-    m.duals = zeros(size(A, 1))
+    m.A .= A
+    m.lb .= lb
+    m.ub .= ub
+    m.constr_lb .= constr_lb
+    m.constr_ub .= constr_ub
+    m.q .= obj
+    m.Q .= 0
+    m.solution .= NaN
+    m.duals .= NaN
 end
 
 setquadobj!(m::NNLSModel, Q) = m.Q = Q
