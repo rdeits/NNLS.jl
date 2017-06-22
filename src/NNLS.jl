@@ -549,7 +549,11 @@ end
 # Automatic Control, 2016.
 # Variable names match the paper wherever possible
 
-@compat const AllColsSubArray{T} = SubArray{T,2,Array{T,2},Tuple{UnitRange{Int},Base.Slice{Base.OneTo{Int}}},false}
+@static if VERSION < v"0.6-"       
+    @compat const AllColsSubArray{T} = SubArray{T,2,Array{T,2},Tuple{UnitRange{Int},Colon},false}       
+else      
+    @compat const AllColsSubArray{T} = SubArray{T,2,Array{T,2},Tuple{UnitRange{Int},Base.Slice{Base.OneTo{Int}}},false}       
+end
 
 type QPWorkspace{T<:LinAlg.BlasReal, I}
     # Variables from paper:
