@@ -65,7 +65,7 @@ function qp_jump(Q, c, G, g)
     @variable m z[1:n]
     constr = @constraint m G * z .<= g
     @static if VERSION < v"0.6-"
-        @objective m Min 0.5 * (z' * Q * z)[1] + c' * z
+        @objective m Min 0.5 * (z' * Q * z)[1] + (c' * z)[1]
     else
         @objective m Min 0.5 * (z' * Q * z) + c' * z
     end

@@ -9,7 +9,9 @@ julia:
   - nightly
 notifications:
   email: false
-
+matrix:
+  - allow_failures:
+      - julia: nightly
 branches:
   only: master
 
