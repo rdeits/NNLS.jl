@@ -59,10 +59,11 @@ end
 
 # Solve a quadratic program using the NNLS solver from JuMP
 function qp_jump(Q, c, G, g)
-    m = Model(solver=NNLS.QPSolver())
+    n = length(c)
+    m = Model(solver=NNLS.NNLSSolver())
     @variable m z[1:n]
     @constraint m G * z .<= g
-    @static if VERSION < "v0.6-"
+    @static if VERSION < v"0.6-"
         @objective m Min 0.5 * (z' * Q * z)[1] + c' * z
     else
         @objective m Min 0.5 * (z' * Q * z) + c' * z
@@ -96,7 +97,7 @@ end
 @testset "qp" begin
     srand(1)
     n, q = 100, 50
-    work = QPWorkspace{Float64, Int}(n, q)
+    work = QPWorkspace{Float64, Int}(q, n)
     for i = 1 : 100
         Q, c, G, g = rand_qp_data(n, q)
         qp_test(work, Q, c, G, g)
