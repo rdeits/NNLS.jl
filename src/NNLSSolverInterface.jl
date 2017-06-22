@@ -72,8 +72,8 @@ function optimize!(m::NNLSModel)
         m.solution = fill(NaN, nvars)
     end
 
-    m.workspace.L = m.Q
-    m.workspace.c = m.q
+    m.workspace.L .= m.Q
+    m.workspace.c .= m.q
 
     m.workspace.G .= 0
 
