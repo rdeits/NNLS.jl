@@ -1,20 +1,26 @@
 # Documentation: http://docs.travis-ci.com/user/languages/julia/
 language: julia
-os:
-  - linux
-  - osx
-julia:
-  - release
-  - nightly
 notifications:
   email: false
-
+matrix:
+  include:
+    - os: osx
+      julia: 0.6
+    - os: linux
+      julia: 0.5
+    - os: linux
+      julia: 0.6
+    - os: linux
+      julia: nightly
+  allow_failures:
+    - julia: nightly
 branches:
   only: master
 
 before_install:
   - export PYTHON=""
   - if [[ "$TRAVIS_OS_NAME" == "osx"   ]]; then brew install gcc ; fi
+  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then sudo apt-get update ; fi
   - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then sudo apt-get install gfortran -y ; fi
 
 script:

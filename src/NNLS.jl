@@ -1,12 +1,14 @@
 __precompile__()
 
 module NNLS
+using Compat: @compat
 
 export nnls,
        solve!,
        NNLSWorkspace,
        QPWorkspace,
-       load!
+       load!,
+       NNLSSolver
 
 """
 CONSTRUCTION AND/OR APPLICATION OF A SINGLE
@@ -143,8 +145,8 @@ type NNLSWorkspace{T, I <: Integer}
     mode::I
     nsetp::I
 
-    function NNLSWorkspace(m, n)
-        new(Matrix{T}(m, n), # A
+    function (::Type{NNLSWorkspace{T, I}}){T, I <: Integer}(m, n)
+        new{T, I}(Matrix{T}(m, n), # A
             Vector{T}(m),    # b
             Vector{T}(n),    # x
             Vector{T}(n),    # w
@@ -548,10 +550,10 @@ end
 # Automatic Control, 2016.
 # Variable names match the paper wherever possible
 
-@static if VERSION < v"0.6-"
-    typealias AllColsSubArray{T} SubArray{T,2,Array{T,2},Tuple{UnitRange{Int},Colon},false}
-else
-    const AllColsSubArray{T} = SubArray{T,2,Array{T,2},Tuple{UnitRange{Int},Base.Slice{Base.OneTo{Int}}},false}
+@static if VERSION < v"0.6-"       
+    @compat const AllColsSubArray{T} = SubArray{T,2,Array{T,2},Tuple{UnitRange{Int},Colon},false}       
+else      
+    @compat const AllColsSubArray{T} = SubArray{T,2,Array{T,2},Tuple{UnitRange{Int},Base.Slice{Base.OneTo{Int}}},false}       
 end
 
 type QPWorkspace{T<:LinAlg.BlasReal, I}
@@ -573,23 +575,30 @@ type QPWorkspace{T<:LinAlg.BlasReal, I}
     nnlswork::NNLSWorkspace{T, I}
     status::Symbol
 
-    function QPWorkspace(n::Integer, q::Integer)
-        L = Matrix{T}(n, n)
-        c = Vector{T}(n)
-        G = Matrix{T}(q, n)
-        g = Vector{T}(q)
-        M = Matrix{T}(q, n)
-        d = Vector{T}(q)
-        r = Vector{T}(n + 1)
-        e = Vector{T}(n)
-        A = Matrix{T}(n + 1, q)
-        AM = view(A, 1 : n, :)
-        Ad = view(A, n + 1 : n + 1, :)
-        b = Vector{T}(n + 1)
-        work = NNLSWorkspace{T, I}(size(A)...)
-        status = :Unsolved
-        new{T, I}(L, c, G, g, M, d, r, e, A, AM, Ad, b, work, status)
+    function (::Type{QPWorkspace{T, I}}){T, I}(q::Integer, n::Integer)
+        work = new{T, I}()
+        resize!(work, q, n)
     end
+end
+
+QPWorkspace(q::Integer, n::Integer) = QPWorkspace{Float64, Int}(q, n)
+
+function Base.resize!{T}(work::QPWorkspace{T}, q::Integer, n::Integer)
+    work.L = Matrix{T}(n, n)
+    work.c = Vector{T}(n)
+    work.G = Matrix{T}(q, n)
+    work.g = Vector{T}(q)
+    work.M = Matrix{T}(q, n)
+    work.d = Vector{T}(q)
+    work.r = Vector{T}(n + 1)
+    work.e = Vector{T}(n)
+    work.A = Matrix{T}(n + 1, q)
+    work.AM = view(work.A, 1 : n, :)
+    work.Ad = view(work.A, n + 1 : n + 1, :)
+    work.b = Vector{T}(n + 1)
+    work.nnlswork = NNLSWorkspace{T, Int}(size(work.A)...)
+    work.status = :Unsolved
+    work
 end
 
 """
@@ -680,5 +689,8 @@ function solve!{T}(work::QPWorkspace{T}, eps_infeasible = 1e-4)
 
     z, λ
 end
+
+include("NNLSSolverInterface.jl")
+using .NNLSSolverInterface: NNLSSolver
 
 end # module
