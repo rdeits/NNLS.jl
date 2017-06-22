@@ -65,6 +65,7 @@ function loadproblem!(m::NNLSModel, A, lb, ub, obj, constr_lb, constr_ub, sense)
     m.Q .= 0
     m.solution .= NaN
     m.duals .= NaN
+    m.workspace.status = :Unsolved
 end
 
 setquadobj!(m::NNLSModel, Q) = m.Q = Q
