@@ -77,18 +77,30 @@ function optimize!(m::NNLSModel)
 
     m.workspace.G .= 0
 
-    m.workspace.G[1:nrows, :] .= m.A
-    m.workspace.g[1:nrows] .= m.constr_ub
-    m.workspace.G[nrows + (1:nrows), :] .= minus.(m.A)
-    m.workspace.g[nrows + (1:nrows)] .= minus.(m.constr_lb)
-    for i in 1:nvars
-        m.workspace.G[(2 * nrows) + i, i] = 1
+    for j in 1:nvars, i in 1:nrows
+        m.workspace.G[i, j] = m.A[i, j]
     end
-    m.workspace.g[(2 * nrows) + (1:nvars)] .= m.ub
-    for i in 1:nvars
-        m.workspace.G[(2 * nrows + nvars) + i, i] = -1
+    for i in 1:nrows
+        m.workspace.g[i] = m.constr_ub[i]
     end
-    m.workspace.g[(2 * nrows + nvars) + (1:nvars)] .= minus.(m.lb)
+    for j in 1:nvars, i in 1:nrows
+        m.workspace.G[i + nrows, j] = -m.A[i, j]
+    end
+    for i in 1:nrows
+        m.workspace.g[i + nrows] = -m.constr_lb[i]
+    end
+    for j in 1:nvars
+        m.workspace.G[2 * nrows + j, j] = 1
+    end
+    for i in 1:nvars
+        m.workspace.g[2 * nrows + i] = m.ub[i]
+    end
+    for i in 1:nvars
+        m.workspace.G[2 * nrows + nvars + i, i] = -1
+    end
+    for i in 1:nvars
+        m.workspace.g[2 * nrows + nvars + i] = -m.lb[i]
+    end
 
     for i in 1:length(m.workspace.g)
         if isinf(m.workspace.g[i])
