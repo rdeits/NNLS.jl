@@ -44,6 +44,8 @@ function loadproblem!(m::NNLSModel, A, lb, ub, q, constr_lb, constr_ub, sense)
     m.constr_ub = copy(constr_ub)
     m.q = copy(q)
     m.Q = zeros(size(A, 2), size(A, 2))
+    m.solution = zeros(size(A, 2))
+    m.duals = zeros(size(A, 1))
 end
 
 setquadobj!(m::NNLSModel, Q) = m.Q = Q
@@ -111,11 +113,19 @@ function optimize!(m::NNLSModel)
 
     m.workspace.status = :Unsolved
 
-    m.solution, m.duals = solve!(m.workspace)
+    m.solution, λ = solve!(m.workspace)
+    for i in 1:nrows
+        if abs(λ[i]) > abs(λ[i + nrows])
+            m.duals[i] = λ[i]
+        else
+            m.duals[i] = λ[i + nrows]
+        end
+    end
 end
 
 getsolution(m::NNLSModel) = m.solution
 getobjval(m::NNLSModel) = 0.5 * m.solution' * m.Q * m.solution + m.q' * m.solution
+getconstrduals(m::NNLSModel) = m.duals
 
 status(m::NNLSModel) = m.workspace.status
 

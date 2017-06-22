@@ -60,9 +60,10 @@ end
 # Solve a quadratic program using the NNLS solver from JuMP
 function qp_jump(Q, c, G, g)
     n = length(c)
+    q = length(g)
     m = Model(solver=NNLS.NNLSSolver())
     @variable m z[1:n]
-    @constraint m G * z .<= g
+    constr = @constraint m G * z .<= g
     @static if VERSION < v"0.6-"
         @objective m Min 0.5 * (z' * Q * z)[1] + c' * z
     else
@@ -70,14 +71,15 @@ function qp_jump(Q, c, G, g)
     end
     status = solve(m, suppress_warnings = true)
     z = status == :Optimal ? getvalue(z) : fill(NaN, n)
-    status, z
+    λ = status == :Optimal ? getdual(constr) : fill(NaN, q)
+    status, z, λ
 end
 
 
 function qp_test(work, Q, c, G, g)
     status_scs, z_scs, λ_scs = quadprog_scs(Q, c, G, g)
     status_basic, z_basic = quadprog_bemporad_simple(Q, c, G, g)
-    status_nnlsqp, z_nnlsqp = qp_jump(Q, c, G, g)
+    status_nnlsqp, z_nnlsqp, λ_nnlsqp = qp_jump(Q, c, G, g)
     load!(work, Q, c, G, g)
     z, λ = solve!(work)
 
@@ -91,6 +93,7 @@ function qp_test(work, Q, c, G, g)
         @test isapprox(z_scs, z; norm = norminf, atol = 5e-2)
         @test isapprox(λ_scs, λ; norm = norminf, atol = 5e-2)
         @test isapprox(z_scs, z_nnlsqp; norm = norminf, atol = 5e-2)
+        @test isapprox(λ_scs, λ_nnlsqp; norm = norminf, atol = 5e-2)
     end
 end
 
