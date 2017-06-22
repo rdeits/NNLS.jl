@@ -1,17 +1,17 @@
 module NNLSSolverInterface
 
-export QPSolver
+export NNLSSolver
 
 using NNLS: QPWorkspace, load!, solve!
 importall MathProgBase.SolverInterface
 
-immutable QPSolver <: AbstractMathProgSolver
+immutable NNLSSolver <: AbstractMathProgSolver
     workspace::QPWorkspace{Float64, Int}
 
-    QPSolver() = new(QPWorkspace{Float64, Int}(0, 0))
+    NNLSSolver() = new(QPWorkspace{Float64, Int}(0, 0))
 end
 
-type QPModel <: AbstractLinearQuadraticModel
+type NNLSModel <: AbstractLinearQuadraticModel
     workspace::QPWorkspace{Float64, Int}
     lb::Vector{Float64}
     ub::Vector{Float64}
@@ -24,34 +24,39 @@ type QPModel <: AbstractLinearQuadraticModel
     solution::Vector{Float64}
     duals::Vector{Float64}
 
-    QPModel(work::QPWorkspace) = new(work)
+    NNLSModel(work::QPWorkspace) = new(work)
 end
 
-LinearQuadraticModel(s::QPSolver) = QPModel(s.workspace)
+LinearQuadraticModel(s::NNLSSolver) = NNLSModel(s.workspace)
 
 numvar(work::QPWorkspace) = size(work.G, 2)
 numconstr(work::QPWorkspace) = size(work.G, 1)
 
-numvar(m::QPModel) = numvar(m.workspace)
-numconstr(m::QPModel) = numconstr(m.workspace)
+numvar(m::NNLSModel) = numvar(m.workspace)
+numconstr(m::NNLSModel) = numconstr(m.workspace)
 
-function loadproblem!(m::QPModel, A, lb, ub, q, constr_lb, constr_ub, sense)
+function loadproblem!(m::NNLSModel, A, lb, ub, q, constr_lb, constr_ub, sense)
     m.sense = sense
-    m.A = A
-    m.lb = lb
-    m.ub = ub
-    m.constr_lb = constr_lb
-    m.constr_ub = constr_ub
-    m.q = q
+    m.A = copy(A)
+    m.lb = copy(lb)
+    m.ub = copy(ub)
+    m.constr_lb = copy(constr_lb)
+    m.constr_ub = copy(constr_ub)
+    m.q = copy(q)
+    m.Q = zeros(size(A, 2), size(A, 2))
 end
 
-setquadobj!(m::QPModel, Q) = m.Q = Q
-setquadobj!(m::QPModel, rowidx, colidx, quadval) = m.Q = sparse(rowidx, colidx, quadval)
+setquadobj!(m::NNLSModel, Q) = m.Q = Q
+function setquadobj!(m::NNLSModel, rowidx, colidx, quadval)
+    m.Q .= 0
+    for i in 1:length(rowidx)
+        x = m.Q[rowidx[i], colidx[i]] + quadval[i]
+        m.Q[rowidx[i], colidx[i]] = x
+        m.Q[colidx[i], rowidx[i]] = x
+    end
+end
 
-# TODO: this is only needed for Julia v0.5
-minus(x) = -x
-
-function optimize!(m::QPModel)
+function optimize!(m::NNLSModel)
     nvars = size(m.A, 2)
     nrows = size(m.A, 1)
     @assert nrows == length(m.constr_lb)
@@ -97,9 +102,9 @@ function optimize!(m::QPModel)
     m.solution, m.duals = solve!(m.workspace)
 end
 
-getsolution(m::QPModel) = m.solution
-getobjval(m::QPModel) = 0.5 * m.solution' * m.Q * m.solution + m.q' * m.solution
+getsolution(m::NNLSModel) = m.solution
+getobjval(m::NNLSModel) = 0.5 * m.solution' * m.Q * m.solution + m.q' * m.solution
 
-status(m::QPModel) = m.workspace.status
+status(m::NNLSModel) = m.workspace.status
 
 end

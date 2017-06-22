@@ -7,7 +7,8 @@ export nnls,
        solve!,
        NNLSWorkspace,
        QPWorkspace,
-       load!
+       load!,
+       NNLSSolver
 
 """
 CONSTRUCTION AND/OR APPLICATION OF A SINGLE
@@ -690,6 +691,6 @@ function solve!{T}(work::QPWorkspace{T}, eps_infeasible = 1e-4)
 end
 
 include("NNLSSolverInterface.jl")
-using .NNLSSolverInterface: QPSolver
+using .NNLSSolverInterface: NNLSSolver
 
 end # module
