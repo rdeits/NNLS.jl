@@ -100,7 +100,7 @@ end
 @testset "qp" begin
     srand(1)
     n, q = 100, 50
-    work = QPWorkspace{Float64, Int}(q, n)
+    work = QPWorkspace(q, n)
     for i = 1 : 100
         Q, c, G, g = rand_qp_data(n, q)
         qp_test(work, Q, c, G, g)
