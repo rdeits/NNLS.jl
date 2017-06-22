@@ -48,6 +48,9 @@ end
 setquadobj!(m::QPModel, Q) = m.Q = Q
 setquadobj!(m::QPModel, rowidx, colidx, quadval) = m.Q = sparse(rowidx, colidx, quadval)
 
+# TODO: this is only needed for Julia v0.5
+minus(x) = -x
+
 function optimize!(m::QPModel)
     nvars = size(m.A, 2)
     nrows = size(m.A, 1)
@@ -71,8 +74,8 @@ function optimize!(m::QPModel)
 
     m.workspace.G[1:nrows, :] .= m.A
     m.workspace.g[1:nrows] .= m.constr_ub
-    m.workspace.G[nrows + (1:nrows), :] .= .-m.A
-    m.workspace.g[nrows + (1:nrows)] .= .-m.constr_lb
+    m.workspace.G[nrows + (1:nrows), :] .= minus.(m.A)
+    m.workspace.g[nrows + (1:nrows)] .= minus.(m.constr_lb)
     for i in 1:nvars
         m.workspace.G[(2 * nrows) + i, i] = 1
     end
@@ -80,7 +83,7 @@ function optimize!(m::QPModel)
     for i in 1:nvars
         m.workspace.G[(2 * nrows + nvars) + i, i] = -1
     end
-    m.workspace.g[(2 * nrows + nvars) + (1:nvars)] .= .-m.lb
+    m.workspace.g[(2 * nrows + nvars) + (1:nvars)] .= minus.(m.lb)
 
     for i in 1:length(m.workspace.g)
         if isinf(m.workspace.g[i])
