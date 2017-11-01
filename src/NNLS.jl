@@ -1,12 +1,17 @@
 __precompile__()
 
 module NNLS
-using Compat: @compat
 
 export nnls,
        solve!,
        NNLSWorkspace,
        QPWorkspace,
+       QP,
+       primal_infeasibility,
+       dual_infeasibility,
+       stationarity_violation,
+       slackness_violation,
+       check_optimality_conditions,
        load!,
        NNLSSolver
 
@@ -208,11 +213,7 @@ Base.size(v::UnsafeVectorView) = (v.len,)
 Base.getindex(v::UnsafeVectorView, idx) = unsafe_load(v.ptr, idx + v.offset)
 Base.setindex!(v::UnsafeVectorView, value, idx) = unsafe_store!(v.ptr, value, idx + v.offset)
 Base.length(v::UnsafeVectorView) = v.len
-@static if VERSION >= v"0.6-"
-    Base.IndexStyle{V <: UnsafeVectorView}(::Type{V}) = Base.IndexLinear()
-else
-    Base.linearindexing{V <: UnsafeVectorView}(::Type{V}) = Base.LinearFast()
-end
+Base.IndexStyle{V <: UnsafeVectorView}(::Type{V}) = Base.IndexLinear()
 
 """
 UnsafeVectorView only works for isbits types. For other types, we're already
@@ -550,11 +551,7 @@ end
 # Automatic Control, 2016.
 # Variable names match the paper wherever possible
 
-@static if VERSION < v"0.6-"       
-    @compat const AllColsSubArray{T} = SubArray{T,2,Array{T,2},Tuple{UnitRange{Int},Colon},false}       
-else      
-    @compat const AllColsSubArray{T} = SubArray{T,2,Array{T,2},Tuple{UnitRange{Int},Base.Slice{Base.OneTo{Int}}},false}       
-end
+const AllColsSubArray{T} = SubArray{T,2,Array{T,2},Tuple{UnitRange{Int},Base.Slice{Base.OneTo{Int}}},false}       
 
 type QPWorkspace{T<:LinAlg.BlasReal, I}
     # Variables from paper:
@@ -582,6 +579,33 @@ type QPWorkspace{T<:LinAlg.BlasReal, I}
 end
 
 QPWorkspace(q::Integer, n::Integer) = QPWorkspace{Float64, Int}(q, n)
+
+"""
+Structure describing the QP:
+
+Minimize ``\\frac{1}{2} z' Q z + c' z``
+Subject to ``G z \\leq g``
+"""
+struct QP{T}
+    Q::Matrix{T}
+    c::Vector{T}
+    G::Matrix{T}
+    g::Vector{T}
+end
+
+"""
+    QPWorkspace(qp::QP)
+
+Construct a workspace and load problem data for the QP
+
+Minimize ``\\frac{1}{2} z' Q z + c' z``
+Subject to ``G z \\leq g``
+"""
+function QPWorkspace(qp::QP{T}) where T
+    work = QPWorkspace{T, Int}(size(qp.G, 1), size(qp.G, 2))
+    load!(work, qp.Q, qp.c, qp.G, qp.g)
+    work
+end
 
 function Base.resize!{T}(work::QPWorkspace{T}, q::Integer, n::Integer)
     work.L = Matrix{T}(n, n)
@@ -618,10 +642,13 @@ function load!{T}(work::QPWorkspace{T}, Q::AbstractMatrix{T}, c::AbstractVector{
     nothing
 end
 
-"""
-    solve!(work::QPWorkspace)
+load!(work::QPWorkspace{T}, qp::QP{T}) where {T} = load!(work, qp.Q, qp.c, qp.G, qp.g)
 
-Solve the QP that was loaded into `work` using `load!`.
+"""
+    z, λ = solve!(work::QPWorkspace)
+
+Solve the QP that was loaded into `work` using `load!`. Returns the primal 
+solution ``z`` and the dual solution ``λ``.
 """
 function solve!{T}(work::QPWorkspace{T}, eps_infeasible = 1e-4)
     work.status == :Unsolved || error("Problem was already solved.")
@@ -688,6 +715,75 @@ function solve!{T}(work::QPWorkspace{T}, eps_infeasible = 1e-4)
     end
 
     z, λ
+end
+
+
+"""
+    primal_infeasibility(qp::QP, z)
+
+Measure of primal infeasibility of the solution to the QP 
+
+Minimize ``\\frac{1}{2} z' Q z + c' z``
+Subject to ``G z \\leq g`
+
+where ``z`` is the primal solution and ``λ`` is the dual solution.
+
+For a primal-feasible solution, this will return a value <= 0.
+"""
+primal_infeasibility(qp::QP, z, λ) = maximum(qp.G * z .- qp.g)
+
+"""
+    dual_infeasibility(qp::QP, λ)
+
+Measure of primal infeasibility of the solution to the QP 
+
+Minimize ``\\frac{1}{2} z' Q z + c' z``
+Subject to ``G z \\leq g`
+
+where ``z`` is the primal solution and ``λ`` is the dual solution.
+
+For a dual-feasible solution, this will return a value <= 0.
+"""
+dual_infeasibility(qp::QP, z, λ) = maximum(λ)
+
+"""
+    stationarity_violation(qp::QP, z, λ)
+
+Measure of the violation of the stationarity KKT condition for the QP. 
+
+For an optimal solution, this should return a value near 0.
+"""
+function stationarity_violation(qp::QP, z, λ) 
+    slack_grad = qp.G' * λ
+    cost_grad = qp.Q * z + qp.c
+    scale = mean(cost_grad ./ slack_grad)
+    maximum(abs, cost_grad .- scale .* slack_grad)
+end
+
+"""
+    slackness_violation(qp::QP, z, λ)
+
+Measure of the violation of the complementary slackness condition for the QP.
+
+For an optimal solution, this should return a value near 0.
+"""
+slackness_violation(qp::QP, z, λ) = maximum(abs, (qp.G * z .- qp.g) .* λ)
+
+"""
+    check_optimality_conditions(qp::QP, z, λ)
+
+Provies a scalar indicator of the violation of the KKT optimality conditions for
+a given QP, primal solution ``z``, and dual solution ``λ``. A feasible & optimal
+solution should return a value close to 0, while an infeasible or suboptimal
+solution should return a value greater than zero.
+"""
+function check_optimality_conditions(qp::QP, z, λ)
+    return max(
+               primal_infeasibility(qp, z, λ),
+               dual_infeasibility(qp, z, λ),
+               stationarity_violation(qp, z, λ),
+               slackness_violation(qp, z, λ)
+               )
 end
 
 include("NNLSSolverInterface.jl")
