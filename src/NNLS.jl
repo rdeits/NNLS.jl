@@ -12,7 +12,7 @@ export nnls,
        dual_infeasibility,
        stationarity_violation,
        slackness_violation,
-       check_solution,
+       check_optimality_conditions,
        load!,
        NNLSSolver
 
@@ -756,7 +756,7 @@ For a dual-feasible solution, this will return a value <= 0.
 dual_infeasibility(qp::QP, z, λ) = maximum(λ)
 
 """
-    stationarity_violation(Q, c, G, g, z, λ)
+    stationarity_violation(qp::QP, z, λ)
 
 Measure of the violation of the stationarity KKT condition for the QP. 
 
@@ -770,7 +770,7 @@ function stationarity_violation(qp::QP, z, λ)
 end
 
 """
-    slackness_violation(Q, c, G, g, z, λ)
+    slackness_violation(qp::QP, z, λ)
 
 Measure of the violation of the complementary slackness condition for the QP.
 
@@ -778,7 +778,15 @@ For an optimal solution, this should return a value near 0.
 """
 slackness_violation(qp::QP, z, λ) = maximum(abs, (qp.G * z .- qp.g) .* λ)
 
-function check_solution(qp::QP, z, λ)
+"""
+    check_optimality_conditions(qp::QP, z, λ)
+
+Provies a scalar indicator of the violation of the KKT optimality conditions for
+a given QP, primal solution ``z``, and dual solution ``λ``. A feasible & optimal
+solution should return a value close to 0, while an infeasible or suboptimal
+solution should return a value greater than zero.
+"""
+function check_optimality_conditions(qp::QP, z, λ)
     return max(
                primal_infeasibility(qp, z, λ),
                dual_infeasibility(qp, z, λ),

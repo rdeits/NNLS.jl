@@ -46,6 +46,45 @@ solve!(work)
 
 If `A2` and `b2` match the size of the arrays `A` and `b` used to create the workspace, then `load!(work, A2, b2)` will not allocate. If they do not match, then the workspace will be resized and some memory will be allocated.
 
+# Solving Quadratic Programs
+
+The NNLS approach can also be used to solve Quadratic Programs, using the approach from section II of  Bemporad, *A quadratic programming algorithm based on nonnegative least squares with applications to embedded model predictive control*, IEEE Transactions on Automatic Control, 2016.
+
+The problem must be of the form:
+
+    Minimize 1/2 z' Q z + c' z
+    Subject to G z <= g
+
+The `QP` struct holds all of the relevant matrices:
+
+```julia
+qp = QP(Q, c, G, g)
+```
+
+and a `QPWorkspace` allocates all of the scratch workspace necessary to solve the QP:
+
+```julia
+work = QPWorkspace(qp)
+```
+
+Solving a QP returns the primal solution `z` and dual solution `\lambda`:
+
+```julia
+z, λ = solve!(work)
+```
+
+You can check the solution status by looking at `work.status`:
+
+```julia
+@assert work.status == :Optimal
+```
+
+The function `check_optimality_conditions` checks violation of the KKT optimality conditions for a given problem and solution. It should return a value close to zero for a feasible & optimal solution:
+
+```julia
+@assert check_optimality_conditions(qp, z, λ) <= 1e-6
+```
+
 # References
 
 [1] Lawson, C.L. and R.J. Hanson, Solving Least-Squares Problems, Prentice-Hall, Chapter 23, p. 161, 1974
