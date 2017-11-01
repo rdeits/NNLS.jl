@@ -114,4 +114,6 @@ end
         qp = rand_infeasible_qp_data(n, q)
         qp_test(work, qp)
     end
+    qp = rand_qp_data(n, q)
+    QPWorkspace(qp)
 end
