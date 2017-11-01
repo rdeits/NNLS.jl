@@ -93,7 +93,7 @@ function qp_test(work, qp::QP)
     @test status_scs == status_basic
 
     if work.status == :Optimal
-        @test check_optimality_conditions(qp, z, λ) <= 1e-5
+        @test check_optimality_conditions(qp, z, λ) <= 2e-5
         @test isapprox(z_basic, z; norm = norminf, atol = 1e-2)
         @test isapprox(z_scs, z; norm = norminf, atol = 5e-2)
         @test isapprox(λ_scs, λ; norm = norminf, atol = 5e-2)
