@@ -117,3 +117,29 @@ end
     qp = rand_qp_data(n, q)
     QPWorkspace(qp)
 end
+
+@testset "qp precision" begin
+    srand(2)
+    n, q = 10, 5
+
+    # Generate a random QP with the default scalar type of Float64 (equivalent to C double)
+    qp_float64 = rand_qp_data(n, q)
+    @test typeof(qp_float64) == QP{Float64}
+
+    # Solve the high-precision QP and check its solution:
+    z_float64, λ_float64 = solve!(QPWorkspace(qp_float64))
+    @test check_optimality_conditions(qp_float64, z_float64, λ_float64) <= 1e-12
+
+    # Generate a copy of the QP using a lower precision scalar type:
+    qp_float32 = convert(QP{Float32}, qp_float64)
+
+    # Solve the low-precision QP and check its solution:
+    z_float32, λ_float32 = solve!(QPWorkspace(qp_float32))
+    @test check_optimality_conditions(qp_float32, z_float32, λ_float32) <= 1e-4
+
+    # Test whether the low-precision QP solution also satisfies the optimality
+    # conditions of the high-precision QP:
+    @test check_optimality_conditions(qp_float64, z_float32, λ_float32) <= 1e-4
+end
+
+
