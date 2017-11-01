@@ -1,7 +1,6 @@
 __precompile__()
 
 module NNLS
-using Compat: @compat
 
 export nnls,
        solve!,
@@ -214,11 +213,7 @@ Base.size(v::UnsafeVectorView) = (v.len,)
 Base.getindex(v::UnsafeVectorView, idx) = unsafe_load(v.ptr, idx + v.offset)
 Base.setindex!(v::UnsafeVectorView, value, idx) = unsafe_store!(v.ptr, value, idx + v.offset)
 Base.length(v::UnsafeVectorView) = v.len
-@static if VERSION >= v"0.6-"
-    Base.IndexStyle{V <: UnsafeVectorView}(::Type{V}) = Base.IndexLinear()
-else
-    Base.linearindexing{V <: UnsafeVectorView}(::Type{V}) = Base.LinearFast()
-end
+Base.IndexStyle{V <: UnsafeVectorView}(::Type{V}) = Base.IndexLinear()
 
 """
 UnsafeVectorView only works for isbits types. For other types, we're already
@@ -556,11 +551,7 @@ end
 # Automatic Control, 2016.
 # Variable names match the paper wherever possible
 
-@static if VERSION < v"0.6-"       
-    @compat const AllColsSubArray{T} = SubArray{T,2,Array{T,2},Tuple{UnitRange{Int},Colon},false}       
-else      
-    @compat const AllColsSubArray{T} = SubArray{T,2,Array{T,2},Tuple{UnitRange{Int},Base.Slice{Base.OneTo{Int}}},false}       
-end
+const AllColsSubArray{T} = SubArray{T,2,Array{T,2},Tuple{UnitRange{Int},Base.Slice{Base.OneTo{Int}}},false}       
 
 type QPWorkspace{T<:LinAlg.BlasReal, I}
     # Variables from paper:
