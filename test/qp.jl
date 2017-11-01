@@ -5,20 +5,22 @@ function rand_qp_data(n, q)
     c = randn(n)
     G = randn(q, n)
     g = randn(q)
-    Q, c, G, g
+    QP(Q, c, G, g)
 end
 
 function rand_infeasible_qp_data(n, q)
-    Q, c, G, g = rand_qp_data(n, q - 1)
+    qp = rand_qp_data(n, q - 1)
+    Q, c, G, g = qp.Q, qp.c, qp.G, qp.g
     index = rand(1 : q - 1)
     Gi = G[index, :]'
     G = [G; -Gi]
     g = [g; -g[index] - 100]
-    Q, c, G, g
+    QP(Q, c, G, g)
 end
 
 # More straightforward, less efficient implementation of the paper
-function quadprog_bemporad_simple(Q, c, G, g)
+function quadprog_bemporad_simple(qp::QP)
+    Q, c, G, g = qp.Q, qp.c, qp.G, qp.g
     n = size(Q, 1)
     T = Float64
     L = cholfact(Q, :U)
@@ -40,8 +42,9 @@ function quadprog_bemporad_simple(Q, c, G, g)
     status, z
 end
 
-# Solve quadratic program with SCS (use trick from http://www.seas.ucla.edu/~vandenbe/publications/socp.pdf)
-function quadprog_scs(Q, c, G, g)
+# Solve quadratic program with ECOS (use trick from http://www.seas.ucla.edu/~vandenbe/publications/socp.pdf)
+function quadprog_ecos(qp::QP)
+    Q, c, G, g = qp.Q, qp.c, qp.G, qp.g
     n = length(c)
     q = length(g)
     m = Model(solver = ECOSSolver(verbose = false))
@@ -58,7 +61,8 @@ function quadprog_scs(Q, c, G, g)
 end
 
 # Solve a quadratic program using the NNLS solver from JuMP
-function qp_jump(Q, c, G, g)
+function qp_jump(qp::QP)
+    Q, c, G, g = qp.Q, qp.c, qp.G, qp.g
     n = length(c)
     q = length(g)
     m = Model(solver=NNLS.NNLSSolver())
@@ -76,11 +80,11 @@ function qp_jump(Q, c, G, g)
 end
 
 
-function qp_test(work, Q, c, G, g)
-    status_scs, z_scs, λ_scs = quadprog_scs(Q, c, G, g)
-    status_basic, z_basic = quadprog_bemporad_simple(Q, c, G, g)
-    status_nnlsqp, z_nnlsqp, λ_nnlsqp = qp_jump(Q, c, G, g)
-    load!(work, Q, c, G, g)
+function qp_test(work, qp::QP)
+    status_scs, z_scs, λ_scs = quadprog_ecos(qp)
+    status_basic, z_basic = quadprog_bemporad_simple(qp)
+    status_nnlsqp, z_nnlsqp, λ_nnlsqp = qp_jump(qp)
+    load!(work, qp)
     z, λ = solve!(work)
 
     norminf = x -> norm(x, Inf)
@@ -89,6 +93,7 @@ function qp_test(work, Q, c, G, g)
     @test status_scs == status_basic
 
     if work.status == :Optimal
+        @test check_solution(qp, z, λ) <= 1e-5
         @test isapprox(z_basic, z; norm = norminf, atol = 1e-2)
         @test isapprox(z_scs, z; norm = norminf, atol = 5e-2)
         @test isapprox(λ_scs, λ; norm = norminf, atol = 5e-2)
@@ -102,11 +107,11 @@ end
     n, q = 100, 50
     work = QPWorkspace(q, n)
     for i = 1 : 100
-        Q, c, G, g = rand_qp_data(n, q)
-        qp_test(work, Q, c, G, g)
+        qp = rand_qp_data(n, q)
+        qp_test(work, qp)
     end
     for j = 1 : 100
-        Q, c, G, g = rand_infeasible_qp_data(n, q)
-        qp_test(work, Q, c, G, g)
+        qp = rand_infeasible_qp_data(n, q)
+        qp_test(work, qp)
     end
 end
