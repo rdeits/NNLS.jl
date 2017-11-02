@@ -759,7 +759,8 @@ function solve!(work::QPWorkspace{T}, eps_infeasible = 1e-4) where T
     # Compute M
     cholQ = cholfact!(Q, :U)
     L = cholQ[:U]
-    M .= G / L
+    M[:] = G
+    LinAlg.A_rdiv_B!(M, L)
 
     # Compute d
     e[:] = c
