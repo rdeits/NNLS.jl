@@ -1,4 +1,3 @@
-
 function rand_qp_data(n, q)
     Q = randn(n, n)
     Q = Q * Q'
@@ -80,17 +79,22 @@ function qp_jump(qp::QP)
 end
 
 
-function qp_test(work, qp::QP)
+function qp_test(qp::QP)
     status_scs, z_scs, λ_scs = quadprog_ecos(qp)
     status_basic, z_basic = quadprog_bemporad_simple(qp)
     status_nnlsqp, z_nnlsqp, λ_nnlsqp = qp_jump(qp)
-    load!(work, qp)
+
+    work = QPWorkspace(qp)
     z, λ = solve!(work)
+
+    work_big = QPWorkspace(QP{BigFloat}(qp))
+    z_big, λ_big = solve!(work_big)
 
     norminf = x -> norm(x, Inf)
     @test status_scs == status_basic
     @test status_scs == work.status
-    @test status_scs == status_basic
+    @test status_scs == status_nnlsqp
+    @test status_scs == work_big.status
 
     if work.status == :Optimal
         @test check_optimality_conditions(qp, z, λ) <= 2e-5
@@ -99,20 +103,21 @@ function qp_test(work, qp::QP)
         @test isapprox(λ_scs, λ; norm = norminf, atol = 5e-2)
         @test isapprox(z_scs, z_nnlsqp; norm = norminf, atol = 5e-2)
         @test isapprox(λ_scs, λ_nnlsqp; norm = norminf, atol = 5e-2)
+        @test isapprox(z_scs, z_big; norm = norminf, atol = 5e-2)
+        @test isapprox(λ_scs, λ_big; norm = norminf, atol = 5e-2)
     end
 end
 
 @testset "qp" begin
     srand(1)
     n, q = 100, 50
-    work = QPWorkspace(q, n)
     for i = 1 : 100
         qp = rand_qp_data(n, q)
-        qp_test(work, qp)
+        qp_test(qp)
     end
     for j = 1 : 100
         qp = rand_infeasible_qp_data(n, q)
-        qp_test(work, qp)
+        qp_test(qp)
     end
     qp = rand_qp_data(n, q)
     QPWorkspace(qp)
