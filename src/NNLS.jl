@@ -551,9 +551,35 @@ end
 # Automatic Control, 2016.
 # Variable names match the paper wherever possible
 
-const AllColsSubArray{T} = SubArray{T,2,Array{T,2},Tuple{UnitRange{Int},Base.Slice{Base.OneTo{Int}}},false}       
+const AllColsSubArray{T} = SubArray{T,2,Array{T,2},Tuple{UnitRange{Int},Base.Slice{Base.OneTo{Int}}},false}
 
-type QPWorkspace{T<:LinAlg.BlasReal, I}
+"""
+Structure describing the QP:
+
+Minimize ``\\frac{1}{2} z' Q z + c' z``
+Subject to ``G z \\leq g``
+"""
+struct QP{T}
+    Q::Matrix{T}
+    c::Vector{T}
+    G::Matrix{T}
+    g::Vector{T}
+
+    function QP{T}(Q::Matrix, c::Vector, G::Matrix, g::Vector) where T
+        @boundscheck begin
+            LinAlg.checksquare(Q)
+            length(c) == size(Q, 1) || throw(DimensionMismatch())
+            size(G, 1) == length(g) || throw(DimensionMismatch())
+            size(G, 2) == size(Q, 1) || throw(DimensionMismatch())
+        end
+        new{T}(Q, c, G, g)
+    end
+
+    QP(Q::Matrix{T}, c::Vector{T}, G::Matrix{T}, g::Vector{T}) where {T} = QP{T}(Q, c, G, g)
+    QP{T}(qp::QP) where {T} = QP{T}(qp.Q, qp.c, qp.G, qp.g)
+end
+
+mutable struct QPWorkspace{T, I} # TODO: consider not having `I` as a parameter
     # Variables from paper:
     L::Matrix{T}
     c::Vector{T}
@@ -572,26 +598,13 @@ type QPWorkspace{T<:LinAlg.BlasReal, I}
     nnlswork::NNLSWorkspace{T, I}
     status::Symbol
 
-    function (::Type{QPWorkspace{T, I}}){T, I}(q::Integer, n::Integer)
+    function QPWorkspace{T, I}(q::Integer, n::Integer) where {T, I}
         work = new{T, I}()
         resize!(work, q, n)
     end
 end
 
 QPWorkspace(q::Integer, n::Integer) = QPWorkspace{Float64, Int}(q, n)
-
-"""
-Structure describing the QP:
-
-Minimize ``\\frac{1}{2} z' Q z + c' z``
-Subject to ``G z \\leq g``
-"""
-struct QP{T}
-    Q::Matrix{T}
-    c::Vector{T}
-    G::Matrix{T}
-    g::Vector{T}
-end
 
 function Base.convert(::Type{QP{T1}}, qp::QP{T2}) where {T1, T2}
     QP(convert(Matrix{T1}, qp.Q),
@@ -651,15 +664,16 @@ function load!{T}(work::QPWorkspace{T}, Q::AbstractMatrix{T}, c::AbstractVector{
 end
 
 load!(work::QPWorkspace{T}, qp::QP{T}) where {T} = load!(work, qp.Q, qp.c, qp.G, qp.g)
+checkunsolved(work::QPWorkspace) = work.status == :Unsolved || error("Problem was already solved.")
 
 """
     z, λ = solve!(work::QPWorkspace)
 
-Solve the QP that was loaded into `work` using `load!`. Returns the primal 
+Solve the QP that was loaded into `work` using `load!`. Returns the primal
 solution ``z`` and the dual solution ``λ``.
 """
-function solve!{T}(work::QPWorkspace{T}, eps_infeasible = 1e-4)
-    work.status == :Unsolved || error("Problem was already solved.")
+function solve!(work::QPWorkspace{T}, eps_infeasible = 1e-4) where T<:Base.LinAlg.BlasFloat
+    checkunsolved(work)
 
     L = work.L
     c = work.c
@@ -725,11 +739,78 @@ function solve!{T}(work::QPWorkspace{T}, eps_infeasible = 1e-4)
     z, λ
 end
 
+function solve!(work::QPWorkspace{T}, eps_infeasible = 1e-4) where T
+    checkunsolved(work)
+
+    Q = work.L # is set to Q initially; modified to be L
+    c = work.c
+    G = work.G
+    g = work.g
+    M = work.M
+    d = work.d
+    e = work.e
+    A = work.A
+    AM = work.AM
+    Ad = work.Ad
+    b = work.b
+    r = work.r
+    nnlswork = work.nnlswork
+
+    # Compute M
+    cholQ = cholfact!(Q, :U)
+    L = cholQ[:U]
+    M .= G / L
+
+    # Compute d
+    e[:] = c
+    A_ldiv_B!(cholQ, e) # e <- Q⁻¹ c
+    A_mul_B!(d, G, e)
+    d .+= g # d <- g + G Q⁻¹ c
+
+    # Populate A
+    transpose!(AM, M)
+    transpose!(Ad, d)
+    scale!(A, -1)
+
+    # Populate b
+    γ = one(T)
+    b[:] = 0
+    b[end] = γ
+
+    # Solve the NNLS
+    load!(nnlswork, A, b)
+    solve!(nnlswork)
+    y = nnlswork.x
+
+    # Compute the residual
+    A_mul_B!(r, A, y)
+    r .-= b # r <- A * y - b
+
+    # Check for feasibility
+    work.status = sum(abs, r) < eps_infeasible ? :Infeasible : :Optimal
+
+    # Back out solution and dual
+    z = similar(c) # TODO
+    λ = y
+    if work.status == :Optimal
+        # Note: r[end] == -(γ + d ⋅ y)
+        At_mul_B!(z, G, y)
+        z .= z ./ r[end] .- c # z <- -1 / (γ + d ⋅ y) G^ᵀ y - c
+        A_ldiv_B!(cholQ, z) # z <- -Q⁻¹ (1 / (γ + d ⋅ y) G^ᵀ y + c)
+        scale!(λ, -1 / sqrt(-r[end])) # the sqrt appears to be missing in (12) in the paper
+    else
+        fill!(z, NaN)
+        fill!(λ, NaN)
+    end
+
+    z, λ
+end
+
 
 """
     primal_infeasibility(qp::QP, z)
 
-Measure of primal infeasibility of the solution to the QP 
+Measure of primal infeasibility of the solution to the QP
 
 Minimize ``\\frac{1}{2} z' Q z + c' z``
 Subject to ``G z \\leq g`
@@ -743,7 +824,7 @@ primal_infeasibility(qp::QP, z, λ) = maximum(qp.G * z .- qp.g)
 """
     dual_infeasibility(qp::QP, λ)
 
-Measure of primal infeasibility of the solution to the QP 
+Measure of primal infeasibility of the solution to the QP
 
 Minimize ``\\frac{1}{2} z' Q z + c' z``
 Subject to ``G z \\leq g`
@@ -757,11 +838,11 @@ dual_infeasibility(qp::QP, z, λ) = maximum(λ)
 """
     stationarity_violation(qp::QP, z, λ)
 
-Measure of the violation of the stationarity KKT condition for the QP. 
+Measure of the violation of the stationarity KKT condition for the QP.
 
 For an optimal solution, this should return a value near 0.
 """
-function stationarity_violation(qp::QP, z, λ) 
+function stationarity_violation(qp::QP, z, λ)
     slack_grad = qp.G' * λ
     cost_grad = qp.Q * z + qp.c
     scale = mean(cost_grad ./ slack_grad)
