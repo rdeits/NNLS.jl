@@ -593,6 +593,14 @@ struct QP{T}
     g::Vector{T}
 end
 
+function Base.convert(::Type{QP{T1}}, qp::QP{T2}) where {T1, T2}
+    QP(convert(Matrix{T1}, qp.Q),
+       convert(Vector{T1}, qp.c),
+       convert(Matrix{T1}, qp.G),
+       convert(Vector{T1}, qp.g))
+end
+
+
 """
     QPWorkspace(qp::QP)
 
@@ -670,14 +678,14 @@ function solve!{T}(work::QPWorkspace{T}, eps_infeasible = 1e-4)
     # Compute M
     LinAlg.LAPACK.potrf!('U', L) # L <- upper cholesky factor of Q
     M .= G
-    LinAlg.BLAS.trsm!('R', 'U', 'N', 'N', 1., L, M) # M <- G L⁻¹
+    LinAlg.BLAS.trsm!('R', 'U', 'N', 'N', one(T), L, M) # M <- G L⁻¹
 
     # Compute d
     e .= c
     LinAlg.LAPACK.potrs!('U', L, e) # e <- Q⁻¹ c
 
     d .= g
-    LinAlg.BLAS.gemv!('N', 1., G, e, 1., d) # d <- g + G Q⁻¹ c
+    LinAlg.BLAS.gemv!('N', one(T), G, e, one(T), d) # d <- g + G Q⁻¹ c
 
     # Populate A
     transpose!(AM, M)
@@ -696,7 +704,7 @@ function solve!{T}(work::QPWorkspace{T}, eps_infeasible = 1e-4)
 
     # Compute the residual
     r = b
-    LinAlg.BLAS.gemv!('N', 1., A, y, -1., r) # r <- A * y - b
+    LinAlg.BLAS.gemv!('N', one(T), A, y, -one(T), r) # r <- A * y - b
 
     # Check for feasibility
     work.status = sum(abs, r) < eps_infeasible ? :Infeasible : :Optimal
@@ -706,7 +714,7 @@ function solve!{T}(work::QPWorkspace{T}, eps_infeasible = 1e-4)
     λ = y
     if work.status == :Optimal
         # Note: r[end] == -(γ + d ⋅ y)
-        LinAlg.BLAS.gemv!('T', 1 / r[end], G, y, -1., c) # z <- -1 / (γ + d ⋅ y) G^ᵀ y - c
+        LinAlg.BLAS.gemv!('T', 1 / r[end], G, y, -one(T), c) # z <- -1 / (γ + d ⋅ y) G^ᵀ y - c
         LinAlg.LAPACK.potrs!('U', L, z)
         scale!(λ, -1 / sqrt(-r[end])) # the sqrt appears to be missing in (12) in the paper
     else
