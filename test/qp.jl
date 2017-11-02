@@ -1,3 +1,5 @@
+using FixedPointNumbers: Fixed
+
 function rand_qp_data(n, q)
     Q = randn(n, n)
     Q = Q * Q'
@@ -145,6 +147,22 @@ end
     # Test whether the low-precision QP solution also satisfies the optimality
     # conditions of the high-precision QP:
     @test check_optimality_conditions(qp_float64, z_float32, λ_float32) <= 1e-4
+
+    # Also solve the QP at very high precision, just for fun. This uses
+    # Julia's built-in BigFloat:
+    # https://docs.julialang.org/en/stable/stdlib/numbers/#BigFloats-1
+    setprecision(BigFloat, 1000) do
+        qp_big = convert(QP{BigFloat}, qp_float64)
+        z_big, λ_big = solve!(QPWorkspace(qp_big))
+        @test check_optimality_conditions(qp_big, z_big, λ_big) <= 1e-299
+    end
+
+    # Solve a QP using fixed point numbers from the FixedPointNumbers.jl package:
+    # https://github.com/JuliaMath/FixedPointNumbers.jl
+    const F = Fixed{Int64, 32} # fixed-point number using 64 total bits, with 32 bits used for the fraction
+    qp_fixed_64 = convert(QP{F}, qp_float64)
+    z_fixed_64, λ_fixed_64 = solve!(QPWorkspace(qp_fixed_64))
+    @test check_optimality_conditions(qp_fixed_64, z_fixed_64, λ_fixed_64) <= 1e-8
 end
 
 
