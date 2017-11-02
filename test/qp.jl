@@ -157,7 +157,8 @@ end
         @test check_optimality_conditions(qp_big, z_big, λ_big) <= 1e-299
     end
 
-    # Solve a QP using fixed point numbers:
+    # Solve a QP using fixed point numbers from the FixedPointNumbers.jl package:
+    # https://github.com/JuliaMath/FixedPointNumbers.jl
     const F = Fixed{Int64, 32} # fixed-point number using 64 total bits, with 32 bits used for the fraction
     qp_fixed_64 = convert(QP{F}, qp_float64)
     z_fixed_64, λ_fixed_64 = solve!(QPWorkspace(qp_fixed_64))
