@@ -1,6 +1,7 @@
 __precompile__()
 
 module NNLS
+import LinearAlgebra
 
 export nnls,
        solve!,
@@ -25,7 +26,7 @@ Charles L. Lawson and Richard J. Hanson at Jet Propulsion Laboratory
 "SOLVING LEAST SQUARES PROBLEMS", Prentice-HalL, 1974.
 Revised FEB 1995 to accompany reprinting of the book by SIAM.
 """
-function construct_householder!{T}(u::AbstractVector{T}, up::T)::T
+function construct_householder!(u::AbstractVector{T}, up::T)::T where T
     m = length(u)
     if m <= 1
         return up
@@ -58,7 +59,7 @@ Charles L. Lawson and Richard J. Hanson at Jet Propulsion Laboratory
 "SOLVING LEAST SQUARES PROBLEMS", Prentice-HalL, 1974.
 Revised FEB 1995 to accompany reprinting of the book by SIAM.
 """
-function apply_householder!{T}(u::AbstractVector{T}, up::T, c::AbstractVector{T})
+function apply_householder!(u::AbstractVector{T}, up::T, c::AbstractVector{T}) where T
     m = length(u)
     if m > 1
         cl = abs(u[1])
@@ -97,7 +98,7 @@ Revised FEB 1995 to accompany reprinting of the book by SIAM.
       SIG IS COMPUTED LAST TO ALLOW FOR THE POSSIBILITY THAT
       SIG MAY BE IN THE SAME LOCATION AS A OR B .
 """
-function orthogonal_rotmat{T}(a::T, b::T)::Tuple{T, T, T}
+function orthogonal_rotmat(a::T, b::T)::Tuple{T, T, T} where T
     if abs(a) > abs(b)
         xr = b / a
         yr = sqrt(1 + xr^2)
@@ -139,7 +140,7 @@ function solve_triangular_system!(zz, A, idx, nsetp, jj)
     return jj
 end
 
-type NNLSWorkspace{T, I <: Integer}
+mutable struct NNLSWorkspace{T, I <: Integer}
     QA::Matrix{T}
     Qb::Vector{T}
     x::Vector{T}
@@ -150,13 +151,13 @@ type NNLSWorkspace{T, I <: Integer}
     mode::I
     nsetp::I
 
-    function (::Type{NNLSWorkspace{T, I}}){T, I <: Integer}(m, n)
-        new{T, I}(Matrix{T}(m, n), # A
-            Vector{T}(m),    # b
-            Vector{T}(n),    # x
-            Vector{T}(n),    # w
-            Vector{T}(m),    # zz
-            Vector{I}(n),    # idx
+    function NNLSWorkspace{T, I}(m, n) where {T, I <: Integer}
+        new{T, I}(Matrix{T}(undef, m, n), # A
+            Vector{T}(undef, m),    # b
+            Vector{T}(undef, n),    # x
+            Vector{T}(undef, n),    # w
+            Vector{T}(undef, m),    # zz
+            Vector{I}(undef, n),    # idx
             zero(T), # rnorm
             zero(I), # mode
             zero(I)  # nsetp
@@ -164,7 +165,7 @@ type NNLSWorkspace{T, I <: Integer}
     end
 end
 
-function Base.resize!{T}(work::NNLSWorkspace{T}, m::Integer, n::Integer)
+function Base.resize!(work::NNLSWorkspace{T}, m::Integer, n::Integer) where T
     work.QA = Matrix{T}(m, n)
     work.Qb = Vector{T}(m)
     resize!(work.x, n)
@@ -173,7 +174,7 @@ function Base.resize!{T}(work::NNLSWorkspace{T}, m::Integer, n::Integer)
     resize!(work.idx, n)
 end
 
-function load!{T}(work::NNLSWorkspace{T}, A::AbstractMatrix{T}, b::AbstractVector{T})
+function load!(work::NNLSWorkspace{T}, A::AbstractMatrix{T}, b::AbstractVector{T}) where T
     m, n = size(A)
     @assert size(b) == (m,)
     if size(work.QA, 1) != m || size(work.QA, 2) != n
@@ -184,11 +185,11 @@ function load!{T}(work::NNLSWorkspace{T}, A::AbstractMatrix{T}, b::AbstractVecto
     work
 end
 
-NNLSWorkspace{T, I}(m::Integer, n::Integer,
-                    eltype::Type{T}=Float64,
-                    indextype::Type{I}=Int) = NNLSWorkspace{T, I}(m, n)
+NNLSWorkspace(m::Integer, n::Integer,
+              eltype::Type{T}=Float64,
+              indextype::Type{I}=Int) where {T, I} = NNLSWorkspace{T, I}(m, n)
 
-function NNLSWorkspace{T, I}(A::Matrix{T}, b::Vector{T}, indextype::Type{I}=Int)
+function NNLSWorkspace(A::Matrix{T}, b::Vector{T}, indextype::Type{I}=Int) where {T, I}
     m, n = size(A)
     @assert size(b) == (m,)
     work = NNLSWorkspace{T, I}(m, n)
@@ -202,18 +203,18 @@ Views in Julia still allocate some memory (since they need to keep
 a reference to the original array). This type allocates no memory
 and does no bounds checking. Use it with caution.
 """
-immutable UnsafeVectorView{T} <: AbstractVector{T}
+struct UnsafeVectorView{T} <: AbstractVector{T}
     offset::Int
     len::Int
     ptr::Ptr{T}
 end
 
-UnsafeVectorView{T}(parent::DenseArray{T}, start_ind::Integer, len::Integer) = UnsafeVectorView{T}(start_ind - 1, len, pointer(parent))
+UnsafeVectorView(parent::DenseArray{T}, start_ind::Integer, len::Integer) where {T} = UnsafeVectorView{T}(start_ind - 1, len, pointer(parent))
 Base.size(v::UnsafeVectorView) = (v.len,)
 Base.getindex(v::UnsafeVectorView, idx) = unsafe_load(v.ptr, idx + v.offset)
 Base.setindex!(v::UnsafeVectorView, value, idx) = unsafe_store!(v.ptr, value, idx + v.offset)
 Base.length(v::UnsafeVectorView) = v.len
-Base.IndexStyle{V <: UnsafeVectorView}(::Type{V}) = Base.IndexLinear()
+Base.IndexStyle(::Type{V}) where {V <: UnsafeVectorView} = Base.IndexLinear()
 
 """
 UnsafeVectorView only works for isbits types. For other types, we're already
@@ -222,7 +223,7 @@ allocating lots of memory elsewhere, so creating a new View is fine.
 This function looks type-unstable, but the isbits(T) test can be evaluated
 by the compiler, so the result is actually type-stable.
 """
-function fastview{T}(parent::Array{T}, start_ind::Integer, len::Integer)
+function fastview(parent::Array{T}, start_ind::Integer, len::Integer) where T
     if isbits(T)
         UnsafeVectorView(parent, start_ind, len)
     else
@@ -245,7 +246,7 @@ fastview(parent::AbstractArray, start_ind::Integer, len::Integer) = @view(parent
     @assert size(work.idx) == (n,)
 end
 
-function largest_positive_dual{T, TI}(w::AbstractVector{T}, idx::AbstractVector{TI}, range)
+function largest_positive_dual(w::AbstractVector{T}, idx::AbstractVector{TI}, range) where {T, TI}
     wmax = zero(T)
     izmax = zero(TI)
     for i in range
@@ -272,7 +273,7 @@ GIVEN AN M BY N MATRIX, A, AND AN M-VECTOR, B,  COMPUTE AN
 N-VECTOR, X, THAT SOLVES THE LEAST SQUARES PROBLEM
                  A * X = B  SUBJECT TO X .GE. 0
 """
-function solve!{T, TI}(work::NNLSWorkspace{T, TI}, max_iter::Integer=(3 * size(work.QA, 2)))
+function solve!(work::NNLSWorkspace{T, TI}, max_iter::Integer=(3 * size(work.QA, 2))) where {T, TI}
     checkargs(work)
 
     A = work.QA
@@ -281,7 +282,7 @@ function solve!{T, TI}(work::NNLSWorkspace{T, TI}, max_iter::Integer=(3 * size(w
     w = work.w
     zz = work.zz
     idx = work.idx
-    const factor = 0.01
+    factor = 0.01
     work.mode = 1
 
     m = convert(TI, size(A, 1))
@@ -340,7 +341,7 @@ function solve!{T, TI}(work::NNLSWorkspace{T, TI}, max_iter::Integer=(3 * size(w
             # NEAR LINEAR DEPENDENCE.
             Asave = A[nsetp + 1, j]
             up = construct_householder!(
-                fastview(A, sub2ind(A, nsetp + 1, j), m - nsetp),
+                fastview(A, LinearIndices(A)[nsetp + 1, j], m - nsetp),
                 up)
             unorm::T = zero(T)
             for l in 1:nsetp
@@ -354,7 +355,7 @@ function solve!{T, TI}(work::NNLSWorkspace{T, TI}, max_iter::Integer=(3 * size(w
                 # println("copying b into zz")
                 zz .= b
                 apply_householder!(
-                    fastview(A, sub2ind(A, nsetp + 1, j), m - nsetp),
+                    fastview(A, LinearIndices(A)[nsetp + 1, j], m - nsetp),
                     up,
                     fastview(zz, nsetp + 1, m - nsetp))
                 ztest = zz[nsetp + 1] / A[nsetp + 1, j]
@@ -390,9 +391,9 @@ function solve!{T, TI}(work::NNLSWorkspace{T, TI}, max_iter::Integer=(3 * size(w
             for jz in iz1:iz2
                 jj = idx[jz]
                 apply_householder!(
-                    fastview(A, sub2ind(A, nsetp, j), m - nsetp + 1),
+                    fastview(A, LinearIndices(A)[nsetp, j], m - nsetp + 1),
                     up,
-                    fastview(A, sub2ind(A, nsetp, jj), m - nsetp + 1))
+                    fastview(A, LinearIndices(A)[nsetp, jj], m - nsetp + 1))
             end
         end
 
@@ -532,13 +533,13 @@ function solve!{T, TI}(work::NNLSWorkspace{T, TI}, max_iter::Integer=(3 * size(w
     return work.x
 end
 
-function solve!{T}(work::NNLSWorkspace{T}, A::AbstractMatrix{T}, b::AbstractVector{T}, max_iter=(3 * size(A, 2)))
+function solve!(work::NNLSWorkspace{T}, A::AbstractMatrix{T}, b::AbstractVector{T}, max_iter=(3 * size(A, 2))) where T
     load!(work, A, b)
     solve!(work, max_iter)
     work.x
 end
 
-function nnls{T}(A::DenseMatrix{T}, b::DenseVector{T}, max_iter=(3 * size(A, 2)))
+function nnls(A::DenseMatrix{T}, b::DenseVector{T}, max_iter=(3 * size(A, 2))) where T
     work = NNLSWorkspace(A, b)
     solve!(work, max_iter)
     work.x
@@ -565,9 +566,9 @@ struct QP{T}
     G::Matrix{T}
     g::Vector{T}
 
-    function QP{T}(Q::Matrix, c::Vector, G::Matrix, g::Vector) where T
+    function QP(Q::Matrix, c::Vector, G::Matrix, g::Vector) where T
         @boundscheck begin
-            LinAlg.checksquare(Q)
+            LinearAlgebra.checksquare(Q)
             length(c) == size(Q, 1) || throw(DimensionMismatch())
             size(G, 1) == length(g) || throw(DimensionMismatch())
             size(G, 2) == size(Q, 1) || throw(DimensionMismatch())
@@ -628,7 +629,7 @@ function QPWorkspace(qp::QP{T}) where T
     work
 end
 
-function Base.resize!{T}(work::QPWorkspace{T}, q::Integer, n::Integer)
+function Base.resize!(work::QPWorkspace{T}, q::Integer, n::Integer) where T
     work.L = Matrix{T}(n, n)
     work.c = Vector{T}(n)
     work.G = Matrix{T}(q, n)
@@ -654,7 +655,7 @@ Load problem data for the QP
 Minimize ``\\frac{1}{2} z' Q z + c' z``
 Subject to ``G z \\leq g``
 """
-function load!{T}(work::QPWorkspace{T}, Q::AbstractMatrix{T}, c::AbstractVector{T}, G::AbstractMatrix{T}, g::AbstractVector{T})
+function load!(work::QPWorkspace{T}, Q::AbstractMatrix{T}, c::AbstractVector{T}, G::AbstractMatrix{T}, g::AbstractVector{T}) where T
     work.L .= Q
     work.c .= c
     work.G .= G
@@ -672,7 +673,7 @@ checkunsolved(work::QPWorkspace) = work.status == :Unsolved || error("Problem wa
 Solve the QP that was loaded into `work` using `load!`. Returns the primal
 solution ``z`` and the dual solution ``λ``.
 """
-function solve!(work::QPWorkspace{T}, eps_infeasible = 1e-4) where T<:Base.LinAlg.BlasFloat
+function solve!(work::QPWorkspace{T}, eps_infeasible = 1e-4) where T<:LinearAlgebra.BlasFloat
     checkunsolved(work)
 
     L = work.L
@@ -690,16 +691,16 @@ function solve!(work::QPWorkspace{T}, eps_infeasible = 1e-4) where T<:Base.LinAl
     nnlswork = work.nnlswork
 
     # Compute M
-    LinAlg.LAPACK.potrf!('U', L) # L <- upper cholesky factor of Q
+    LinearAlgebra.LAPACK.potrf!('U', L) # L <- upper cholesky factor of Q
     M .= G
-    LinAlg.BLAS.trsm!('R', 'U', 'N', 'N', one(T), L, M) # M <- G L⁻¹
+    LinearAlgebra.BLAS.trsm!('R', 'U', 'N', 'N', one(T), L, M) # M <- G L⁻¹
 
     # Compute d
     e .= c
-    LinAlg.LAPACK.potrs!('U', L, e) # e <- Q⁻¹ c
+    LinearAlgebra.LAPACK.potrs!('U', L, e) # e <- Q⁻¹ c
 
     d .= g
-    LinAlg.BLAS.gemv!('N', one(T), G, e, one(T), d) # d <- g + G Q⁻¹ c
+    LinearAlgebra.BLAS.gemv!('N', one(T), G, e, one(T), d) # d <- g + G Q⁻¹ c
 
     # Populate A
     transpose!(AM, M)
@@ -718,7 +719,7 @@ function solve!(work::QPWorkspace{T}, eps_infeasible = 1e-4) where T<:Base.LinAl
 
     # Compute the residual
     r = b
-    LinAlg.BLAS.gemv!('N', one(T), A, y, -one(T), r) # r <- A * y - b
+    LinearAlgebra.BLAS.gemv!('N', one(T), A, y, -one(T), r) # r <- A * y - b
 
     # Check for feasibility
     work.status = sum(abs, r) < eps_infeasible ? :Infeasible : :Optimal
@@ -728,8 +729,8 @@ function solve!(work::QPWorkspace{T}, eps_infeasible = 1e-4) where T<:Base.LinAl
     λ = y
     if work.status == :Optimal
         # Note: r[end] == -(γ + d ⋅ y)
-        LinAlg.BLAS.gemv!('T', 1 / r[end], G, y, -one(T), c) # z <- -1 / (γ + d ⋅ y) G^ᵀ y - c
-        LinAlg.LAPACK.potrs!('U', L, z)
+        LinearAlgebra.BLAS.gemv!('T', 1 / r[end], G, y, -one(T), c) # z <- -1 / (γ + d ⋅ y) G^ᵀ y - c
+        LinearAlgebra.LAPACK.potrs!('U', L, z)
         scale!(λ, -1 / sqrt(-r[end])) # the sqrt appears to be missing in (12) in the paper
     else
         fill!(z, NaN)
@@ -760,7 +761,7 @@ function solve!(work::QPWorkspace{T}, eps_infeasible = 1e-4) where T
     cholQ = cholfact!(Q, :U)
     L = cholQ[:U]
     M[:] = G
-    LinAlg.A_rdiv_B!(M, L)
+    LinearAlgebra.A_rdiv_B!(M, L)
 
     # Compute d
     e[:] = c

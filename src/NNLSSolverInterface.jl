@@ -3,12 +3,12 @@ module NNLSSolverInterface
 export NNLSSolver
 
 using NNLS: QPWorkspace, load!, solve!
-importall MathProgBase.SolverInterface
+using MathProgBase.SolverInterface
 
-immutable NNLSSolver <: AbstractMathProgSolver
+struct NNLSSolver <: AbstractMathProgSolver
 end
 
-type NNLSModel <: AbstractLinearQuadraticModel
+mutable struct NNLSModel <: AbstractLinearQuadraticModel
     workspace::QPWorkspace{Float64, Int}
     lb::Vector{Float64}
     ub::Vector{Float64}
