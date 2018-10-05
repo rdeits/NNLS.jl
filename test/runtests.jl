@@ -4,6 +4,10 @@ using Test
 using PyCall
 using ECOS
 using JuMP
+using Random
+
+import Libdl
+
 
 const pyopt = pyimport_conda("scipy.optimize", "scipy")
 

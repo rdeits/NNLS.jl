@@ -111,7 +111,7 @@ function qp_test(qp::QP)
 end
 
 @testset "qp" begin
-    srand(1)
+    Random.seed!(1)
     n, q = 100, 50
     for i = 1 : 100
         qp = rand_qp_data(n, q)
@@ -126,7 +126,7 @@ end
 end
 
 @testset "qp precision" begin
-    srand(2)
+    Random.seed!(2)
     n, q = 10, 5
 
     # Generate a random QP with the default scalar type of Float64 (equivalent to C double)
