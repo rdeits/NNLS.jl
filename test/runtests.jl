@@ -1,5 +1,5 @@
 using NNLS
-using Base.Test
+using Test
 # import NonNegLeastSquares
 using PyCall
 using ECOS
