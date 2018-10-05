@@ -1,9 +1,13 @@
 using NNLS
-using Base.Test
-import NonNegLeastSquares
+using Test
+# import NonNegLeastSquares
 using PyCall
 using ECOS
 using JuMP
+using Random
+
+import Libdl
+
 
 const pyopt = pyimport_conda("scipy.optimize", "scipy")
 

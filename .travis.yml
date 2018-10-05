@@ -1,19 +1,22 @@
 # Documentation: http://docs.travis-ci.com/user/languages/julia/
 language: julia
+
 notifications:
   email: false
+
+julia:
+  - 0.7
+  - 1.0
+  - nightly
+
 matrix:
-  include:
-    - os: osx
-      julia: 0.6
-    - os: linux
-      julia: 0.6
-    - os: linux
-      julia: nightly
   allow_failures:
-    - julia: nightly
+  - julia: nightly
+
 branches:
-  only: master
+  only:
+    - master
+    - /^v[0-9]+\.[0-9]+\.[0-9]+$/ # version tags
 
 before_install:
   - export PYTHON=""
@@ -22,10 +25,10 @@ before_install:
   - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then sudo apt-get update ; fi
   - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then sudo apt-get install gfortran -y ; fi
 
-script:
- - if [[ -a .git/shallow ]]; then git fetch --unshallow; fi
- - julia -e 'Pkg.clone(pwd()); Pkg.build("NNLS"); Pkg.test("NNLS"; coverage=true)'
+# script:
+#  - if [[ -a .git/shallow ]]; then git fetch --unshallow; fi
+#  - julia -e 'Pkg.clone(pwd()); Pkg.build("NNLS"); Pkg.test("NNLS"; coverage=true)'
 
 after_success:
   # push coverage results to Codecov
-  - julia -e 'cd(Pkg.dir("NNLS")); Pkg.add("Coverage"); using Coverage; Codecov.submit(Codecov.process_folder())'
+  - julia --project -e 'import Pkg; Pkg.add("Coverage"); using Coverage; Codecov.submit(Codecov.process_folder())'
