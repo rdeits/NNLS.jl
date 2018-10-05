@@ -14,7 +14,7 @@ function runbenchmarks()
             inputs = [(randn(m, n), randn(m)) for i in 1:50]
 
             for (A, b) in inputs
-                @assert nnls(A, b) ≈ NonNegLeastSquares.nnls(A, b)
+                # @assert nnls(A, b) ≈ NonNegLeastSquares.nnls(A, b)
                 @assert nnls(A, b) == pyopt_nnls(A, b)[1]
             end
 

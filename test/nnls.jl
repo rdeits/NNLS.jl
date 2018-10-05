@@ -224,17 +224,17 @@ end
     @test @wrappedallocs(solve!(work)) <= 0
 end
 
-@testset "nnls vs NonNegLeastSquares" begin
-    srand(5)
-    for i in 1:1000
-        m = rand(20:60)
-        n = rand(20:60)
-        A = randn(m, n)
-        b = randn(m)
+# @testset "nnls vs NonNegLeastSquares" begin
+#     srand(5)
+#     for i in 1:1000
+#         m = rand(20:60)
+#         n = rand(20:60)
+#         A = randn(m, n)
+#         b = randn(m)
 
-        @test nnls(A, b) ≈ NonNegLeastSquares.nnls(A, b)
-    end
-end
+#         @test nnls(A, b) ≈ NonNegLeastSquares.nnls(A, b)
+#     end
+# end
 
 @testset "nnls vs scipy" begin
     srand(5)

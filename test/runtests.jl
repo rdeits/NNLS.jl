@@ -1,6 +1,6 @@
 using NNLS
 using Base.Test
-import NonNegLeastSquares
+# import NonNegLeastSquares
 using PyCall
 using ECOS
 using JuMP
