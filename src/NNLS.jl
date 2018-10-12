@@ -1,7 +1,8 @@
 __precompile__()
 
 module NNLS
-import LinearAlgebra
+using LinearAlgebra
+using Statistics: mean
 
 export nnls,
        solve!,
@@ -166,8 +167,8 @@ mutable struct NNLSWorkspace{T, I <: Integer}
 end
 
 function Base.resize!(work::NNLSWorkspace{T}, m::Integer, n::Integer) where T
-    work.QA = Matrix{T}(m, n)
-    work.Qb = Vector{T}(m)
+    work.QA = Matrix{T}(undef, m, n)
+    work.Qb = Vector{T}(undef, m)
     resize!(work.x, n)
     resize!(work.w, n)
     resize!(work.zz, m)
@@ -217,14 +218,14 @@ Base.length(v::UnsafeVectorView) = v.len
 Base.IndexStyle(::Type{V}) where {V <: UnsafeVectorView} = Base.IndexLinear()
 
 """
-UnsafeVectorView only works for isbits types. For other types, we're already
+UnsafeVectorView only works for isbitstype types. For other types, we're already
 allocating lots of memory elsewhere, so creating a new View is fine.
 
-This function looks type-unstable, but the isbits(T) test can be evaluated
+This function looks type-unstable, but the isbitstype(T) test can be evaluated
 by the compiler, so the result is actually type-stable.
 """
 function fastview(parent::Array{T}, start_ind::Integer, len::Integer) where T
-    if isbits(T)
+    if isbitstype(T)
         UnsafeVectorView(parent, start_ind, len)
     else
         @view(parent[start_ind:(start_ind + len - 1)])
@@ -424,7 +425,7 @@ function solve!(work::NNLSWorkspace{T, TI}, max_iter::Integer=(3 * size(work.QA,
             # SEE IF ALL NEW CONSTRAINED COEFFS ARE FEASIBLE.
             # IF NOT COMPUTE ALPHA.
             alpha = convert(T, 2)
-            for ip in one(TI):nsetp
+            for ip in Base.OneTo(nsetp)
                 l = idx[ip]
                 if zz[ip] <= 0
                     t = -x[l] / (zz[ip] - x[l])
@@ -443,7 +444,7 @@ function solve!(work::NNLSWorkspace{T, TI}, max_iter::Integer=(3 * size(work.QA,
 
             # OTHERWISE USE ALPHA WHICH WILL BE BETWEEN 0 AND 1 TO
             # INTERPOLATE BETWEEN THE OLD X AND THE NEW ZZ.
-            for ip in one(TI):nsetp
+            for ip in Base.OneTo(nsetp)
                 l = idx[ip]
                 x[l] = x[l] + alpha * (zz[ip] - x[l])
             end
@@ -463,7 +464,7 @@ function solve!(work::NNLSWorkspace{T, TI}, max_iter::Integer=(3 * size(work.QA,
                         cc, ss, sig = orthogonal_rotmat(A[j - 1, ii], A[j, ii])
                         A[j - 1, ii] = sig
                         A[j, ii] = 0
-                        for l in one(TI):n
+                        for l in Base.OneTo(n)
                             if l != ii
                                 # Apply procedure G2 (CC,SS,A(J-1,L),A(J,L))
                                 temp = A[j - 1, l]
@@ -489,7 +490,8 @@ function solve!(work::NNLSWorkspace{T, TI}, max_iter::Integer=(3 * size(work.QA,
                 # THAT ARE NONPOSITIVE WILL BE SET TO ZERO
                 # AND MOVED FROM SET P TO SET Z.
                 allfeasible = true
-                for jj in one(TI):nsetp
+                for jji in Base.OneTo(nsetp)
+                    jj = jji
                     i = idx[jj]
                     if x[i] <= 0
                         allfeasible = false
@@ -566,7 +568,7 @@ struct QP{T}
     G::Matrix{T}
     g::Vector{T}
 
-    function QP(Q::Matrix, c::Vector, G::Matrix, g::Vector) where T
+    function QP{T}(Q::Matrix, c::Vector, G::Matrix, g::Vector) where T
         @boundscheck begin
             LinearAlgebra.checksquare(Q)
             length(c) == size(Q, 1) || throw(DimensionMismatch())
@@ -630,18 +632,18 @@ function QPWorkspace(qp::QP{T}) where T
 end
 
 function Base.resize!(work::QPWorkspace{T}, q::Integer, n::Integer) where T
-    work.L = Matrix{T}(n, n)
-    work.c = Vector{T}(n)
-    work.G = Matrix{T}(q, n)
-    work.g = Vector{T}(q)
-    work.M = Matrix{T}(q, n)
-    work.d = Vector{T}(q)
-    work.r = Vector{T}(n + 1)
-    work.e = Vector{T}(n)
-    work.A = Matrix{T}(n + 1, q)
+    work.L = Matrix{T}(undef, n, n)
+    work.c = Vector{T}(undef, n)
+    work.G = Matrix{T}(undef, q, n)
+    work.g = Vector{T}(undef, q)
+    work.M = Matrix{T}(undef, q, n)
+    work.d = Vector{T}(undef, q)
+    work.r = Vector{T}(undef, n + 1)
+    work.e = Vector{T}(undef, n)
+    work.A = Matrix{T}(undef, n + 1, q)
     work.AM = view(work.A, 1 : n, :)
     work.Ad = view(work.A, n + 1 : n + 1, :)
-    work.b = Vector{T}(n + 1)
+    work.b = Vector{T}(undef, n + 1)
     work.nnlswork = NNLSWorkspace{T, Int}(size(work.A)...)
     work.status = :Unsolved
     work
@@ -705,11 +707,11 @@ function solve!(work::QPWorkspace{T}, eps_infeasible = 1e-4) where T<:LinearAlge
     # Populate A
     transpose!(AM, M)
     transpose!(Ad, d)
-    scale!(A, -1)
+    rmul!(A, -1)
 
     # Populate b
     γ = one(T)
-    b[:] = 0
+    b .= 0
     b[end] = γ
 
     # Solve the NNLS
@@ -731,7 +733,7 @@ function solve!(work::QPWorkspace{T}, eps_infeasible = 1e-4) where T<:LinearAlge
         # Note: r[end] == -(γ + d ⋅ y)
         LinearAlgebra.BLAS.gemv!('T', 1 / r[end], G, y, -one(T), c) # z <- -1 / (γ + d ⋅ y) G^ᵀ y - c
         LinearAlgebra.LAPACK.potrs!('U', L, z)
-        scale!(λ, -1 / sqrt(-r[end])) # the sqrt appears to be missing in (12) in the paper
+        rmul!(λ, -1 / sqrt(-r[end])) # the sqrt appears to be missing in (12) in the paper
     else
         fill!(z, NaN)
         fill!(λ, NaN)
@@ -758,25 +760,25 @@ function solve!(work::QPWorkspace{T}, eps_infeasible = 1e-4) where T
     nnlswork = work.nnlswork
 
     # Compute M
-    cholQ = cholfact!(Q, :U)
-    L = cholQ[:U]
+    cholQ = cholesky!(Hermitian(Q, :U))
+    L = cholQ.U
     M[:] = G
-    LinearAlgebra.A_rdiv_B!(M, L)
+    rdiv!(M, L)
 
     # Compute d
     e[:] = c
-    A_ldiv_B!(cholQ, e) # e <- Q⁻¹ c
-    A_mul_B!(d, G, e)
+    ldiv!(cholQ, e) # e <- Q⁻¹ c
+    mul!(d, G, e)
     d .+= g # d <- g + G Q⁻¹ c
 
     # Populate A
     transpose!(AM, M)
     transpose!(Ad, d)
-    scale!(A, -1)
+    rmul!(A, -1)
 
     # Populate b
     γ = one(T)
-    b[:] = 0
+    b .= 0
     b[end] = γ
 
     # Solve the NNLS
@@ -785,7 +787,7 @@ function solve!(work::QPWorkspace{T}, eps_infeasible = 1e-4) where T
     y = nnlswork.x
 
     # Compute the residual
-    A_mul_B!(r, A, y)
+    mul!(r, A, y)
     r .-= b # r <- A * y - b
 
     # Check for feasibility
@@ -796,10 +798,10 @@ function solve!(work::QPWorkspace{T}, eps_infeasible = 1e-4) where T
     λ = y
     if work.status == :Optimal
         # Note: r[end] == -(γ + d ⋅ y)
-        At_mul_B!(z, G, y)
+        mul!(z, transpose(G), y)
         z .= z ./ r[end] .- c # z <- -1 / (γ + d ⋅ y) G^ᵀ y - c
-        A_ldiv_B!(cholQ, z) # z <- -Q⁻¹ (1 / (γ + d ⋅ y) G^ᵀ y + c)
-        scale!(λ, -1 / sqrt(-r[end])) # the sqrt appears to be missing in (12) in the paper
+        ldiv!(cholQ, z) # z <- -Q⁻¹ (1 / (γ + d ⋅ y) G^ᵀ y + c)
+        rmul!(λ, -1 / sqrt(-r[end])) # the sqrt appears to be missing in (12) in the paper
     else
         fill!(z, NaN)
         fill!(λ, NaN)
