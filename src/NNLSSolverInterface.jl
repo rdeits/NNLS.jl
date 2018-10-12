@@ -2,13 +2,15 @@ module NNLSSolverInterface
 
 export NNLSSolver
 
+using LinearAlgebra
 using NNLS: QPWorkspace, load!, solve!
-using MathProgBase.SolverInterface
+import MathProgBase.SolverInterface
+const MSI = SolverInterface
 
-struct NNLSSolver <: AbstractMathProgSolver
+struct NNLSSolver <: MSI.AbstractMathProgSolver
 end
 
-mutable struct NNLSModel <: AbstractLinearQuadraticModel
+mutable struct NNLSModel <: MSI.AbstractLinearQuadraticModel
     workspace::QPWorkspace{Float64, Int}
     lb::Vector{Float64}
     ub::Vector{Float64}
@@ -42,15 +44,15 @@ function Base.resize!(m::NNLSModel, q::Integer, n::Integer)
     m.duals = fill(NaN, q)
 end
 
-LinearQuadraticModel(s::NNLSSolver) = NNLSModel()
+MSI.LinearQuadraticModel(s::NNLSSolver) = NNLSModel()
 
-numvar(work::QPWorkspace) = size(work.G, 2)
-numconstr(work::QPWorkspace) = size(work.G, 1)
+MSI.numvar(work::QPWorkspace) = size(work.G, 2)
+MSI.numconstr(work::QPWorkspace) = size(work.G, 1)
 
-numvar(m::NNLSModel) = numvar(m.workspace)
-numconstr(m::NNLSModel) = numconstr(m.workspace)
+MSI.numvar(m::NNLSModel) = MSI.numvar(m.workspace)
+MSI.numconstr(m::NNLSModel) = MSI.numconstr(m.workspace)
 
-function loadproblem!(m::NNLSModel, A, lb, ub, obj, constr_lb, constr_ub, sense)
+function MSI.loadproblem!(m::NNLSModel, A, lb, ub, obj, constr_lb, constr_ub, sense)
     q, n = size(A)
     if (q != size(m.A, 1)) || (n != size(m.A, 2))
         resize!(m, q, n)
@@ -68,8 +70,8 @@ function loadproblem!(m::NNLSModel, A, lb, ub, obj, constr_lb, constr_ub, sense)
     m.workspace.status = :Unsolved
 end
 
-setquadobj!(m::NNLSModel, Q) = m.Q = Q
-function setquadobj!(m::NNLSModel, rowidx, colidx, quadval)
+MSI.setquadobj!(m::NNLSModel, Q) = m.Q = Q
+function MSI.setquadobj!(m::NNLSModel, rowidx, colidx, quadval)
     m.Q .= 0
     for i in 1:length(rowidx)
         x = m.Q[rowidx[i], colidx[i]] + quadval[i]
@@ -78,7 +80,7 @@ function setquadobj!(m::NNLSModel, rowidx, colidx, quadval)
     end
 end
 
-function optimize!(m::NNLSModel)
+function MSI.optimize!(m::NNLSModel)
     nvars = size(m.A, 2)
     nrows = size(m.A, 1)
     @assert nrows == length(m.constr_lb)
@@ -89,7 +91,7 @@ function optimize!(m::NNLSModel)
 
     nconstr = 2 * nrows + 2 * nvars
 
-    if nvars != numvar(m.workspace) || nconstr != numconstr(m.workspace)
+    if nvars != MSI.numvar(m.workspace) || nconstr != MSI.numconstr(m.workspace)
         resize!(m.workspace, nconstr, nvars)
         m.solution = fill(NaN, nvars)
     end
@@ -143,10 +145,10 @@ function optimize!(m::NNLSModel)
     end
 end
 
-getsolution(m::NNLSModel) = m.solution
-getobjval(m::NNLSModel) = 0.5 * m.solution' * m.Q * m.solution + m.q' * m.solution
-getconstrduals(m::NNLSModel) = m.duals
+MSI.getsolution(m::NNLSModel) = m.solution
+MSI.getobjval(m::NNLSModel) = 0.5 * m.solution' * m.Q * m.solution + m.q' * m.solution
+MSI.getconstrduals(m::NNLSModel) = m.duals
 
-status(m::NNLSModel) = m.workspace.status
+MSI.status(m::NNLSModel) = m.workspace.status
 
 end
