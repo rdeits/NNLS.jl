@@ -24,8 +24,8 @@ function quadprog_bemporad_simple(qp::QP)
     Q, c, G, g = qp.Q, qp.c, qp.G, qp.g
     n = size(Q, 1)
     T = Float64
-    L = cholfact(Q, :U)
-    M = G / L[:U]
+    L = cholesky(Hermitian(Q, :U))
+    M = G / L.U
     e = (L \ c)
     d = g + G * e
     γ = 1
@@ -36,8 +36,8 @@ function quadprog_bemporad_simple(qp::QP)
     status = sum(abs, r) < 1e-7 ? :Infeasible : :Optimal
     z = - inv(Q) * (c + 1 / (γ + d ⋅ y) * G' * y)
 
-    @assert isapprox(L[:U]' * L[:U], Q; rtol = 1e-4)
-    @assert isapprox(G * inv(L[:U]), M; rtol = 1e-4)
+    @assert isapprox(L.U' * L.U, Q; rtol = 1e-4)
+    @assert isapprox(G * inv(L.U), M; rtol = 1e-4)
     @assert isapprox(g + G * (Q \ c), d; rtol = 1e-4)
 
     status, z
@@ -52,7 +52,7 @@ function quadprog_ecos(qp::QP)
     @variable m z[1 : n]
     constr = @constraint m G * z .<= g
     @variable m slack >= 0
-    P = sqrtm(Q)
+    P = sqrt(Q)
     @constraint m norm(P * z + P \ c) <= slack
     @objective m Min slack
     status = solve(m, suppress_warnings = true)
@@ -111,7 +111,7 @@ function qp_test(qp::QP)
 end
 
 @testset "qp" begin
-    srand(1)
+    Random.seed!(1)
     n, q = 100, 50
     for i = 1 : 100
         qp = rand_qp_data(n, q)
@@ -126,7 +126,7 @@ end
 end
 
 @testset "qp precision" begin
-    srand(2)
+    Random.seed!(2)
     n, q = 10, 5
 
     # Generate a random QP with the default scalar type of Float64 (equivalent to C double)
@@ -159,7 +159,7 @@ end
 
     # Solve a QP using fixed point numbers from the FixedPointNumbers.jl package:
     # https://github.com/JuliaMath/FixedPointNumbers.jl
-    const F = Fixed{Int64, 32} # fixed-point number using 64 total bits, with 32 bits used for the fraction
+    F = Fixed{Int64, 32} # fixed-point number using 64 total bits, with 32 bits used for the fraction
     qp_fixed_64 = convert(QP{F}, qp_float64)
     z_fixed_64, λ_fixed_64 = solve!(QPWorkspace(qp_fixed_64))
     @test check_optimality_conditions(qp_fixed_64, z_fixed_64, λ_fixed_64) <= 1e-8
