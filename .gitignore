@@ -3,3 +3,4 @@
 *.jl.mem
 test/libnnls.dylib
 test/libnnls.so
+Manifest.toml

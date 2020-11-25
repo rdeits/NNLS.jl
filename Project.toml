@@ -1,0 +1,24 @@
+name = "NNLS"
+uuid = "273520d0-e037-5df9-b548-206e1682bb53"
+
+[deps]
+Libdl = "8f399da3-3557-5675-b5ff-fb832c97cbdb"
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+MathProgBase = "fdba3010-5040-5b88-9595-932c9decdf73"
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
+
+[compat]
+JuMP = "0.18"
+MathProgBase = "0.7"
+julia = "1"
+
+[extras]
+ECOS = "e2685f51-7e38-5353-a97d-a921fd2c8199"
+FixedPointNumbers = "53c48c17-4a7d-5ca2-90c5-79b7896eea93"
+JuMP = "4076af6c-e467-56ae-b986-b466b2749572"
+PyCall = "438e738f-606a-5dbb-bf0a-cddfbfd45ab0"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Test", "ECOS", "PyCall", "JuMP", "FixedPointNumbers"]
