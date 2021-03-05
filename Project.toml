@@ -1,5 +1,6 @@
 name = "NNLS"
 uuid = "273520d0-e037-5df9-b548-206e1682bb53"
+version = "0.0.2"
 
 [deps]
 Libdl = "8f399da3-3557-5675-b5ff-fb832c97cbdb"
@@ -11,6 +12,7 @@ Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 [compat]
 JuMP = "0.18"
 MathProgBase = "0.7"
+PyCall = "1"
 julia = "1"
 
 [extras]

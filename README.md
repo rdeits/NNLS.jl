@@ -1,6 +1,6 @@
 # NNLS.jl: Non-Negative Least Squares in Julia
 
-[![Build Status](https://travis-ci.org/rdeits/NNLS.jl.svg?branch=master)](https://travis-ci.org/rdeits/NNLS.jl)
+[![Build Status](https://github.com/rdeits/NNLS.jl/workflows/CI/badge.svg)](https://github.com/rdeits/NNLS.jl/actions?query=workflow%3ACI)
 [![codecov.io](http://codecov.io/github/rdeits/NNLS.jl/coverage.svg?branch=master)](http://codecov.io/github/rdeits/NNLS.jl?branch=master)
 
 This package implements the non-negative least squares solver from Lawson and Hanson [1]. Given a matrix A and vector b, `nnls(A, b)` computes:
