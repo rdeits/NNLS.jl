@@ -2,7 +2,7 @@ using FixedPointNumbers: Fixed
 
 function rand_qp_data(n, q)
     Q = randn(n, n)
-    Q = Q * Q'
+    Q = Q * Q' .+ 1e-6 .* I
     c = randn(n)
     G = randn(q, n)
     g = randn(q)
