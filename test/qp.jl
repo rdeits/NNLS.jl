@@ -2,7 +2,7 @@ using FixedPointNumbers: Fixed
 
 function rand_qp_data(n, q)
     Q = randn(n, n)
-    Q = Q * Q' .+ 1e-6 .* I
+    Q = Q * Q' .+ 1e-5 .* I(n)
     c = randn(n)
     G = randn(q, n)
     g = randn(q)
@@ -99,7 +99,7 @@ function qp_test(qp::QP)
     @test status_scs == work_big.status
 
     if work.status == :Optimal
-        @test check_optimality_conditions(qp, z, λ) <= 2e-5
+        @test check_optimality_conditions(qp, z, λ) <= 1e-4
         @test isapprox(z_basic, z; norm = norminf, atol = 1e-2)
         @test isapprox(z_scs, z; norm = norminf, atol = 5e-2)
         @test isapprox(λ_scs, λ; norm = norminf, atol = 5e-2)

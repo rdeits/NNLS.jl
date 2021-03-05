@@ -205,7 +205,7 @@ end
         A = randn(m, n)
         b = randn(m)
         @test @wrappedallocs(solve!(work, A, b)) == 0
-        @test work.x == pyopt[:nnls](A, b)[1]
+        @test work.x == pyopt.nnls(A, b)[1]
     end
 
     m = 20
@@ -214,7 +214,7 @@ end
         A = randn(m, n)
         b = randn(m)
         solve!(work, A, b)
-        @test work.x == pyopt[:nnls](A, b)[1]
+        @test work.x == pyopt.nnls(A, b)[1]
     end
 end
 
