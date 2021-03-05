@@ -253,7 +253,7 @@ end
         A = randn(m, n)
         b = randn(m)
         x1 = nnls(A, b)
-        x2, residual2 = pyopt[:nnls](A, b)
+        x2, residual2 = pyopt.nnls(A, b)
         @test x1 == x2
     end
 end
