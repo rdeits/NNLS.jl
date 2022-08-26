@@ -1,6 +1,0 @@
-*.jl.cov
-*.jl.*.cov
-*.jl.mem
-test/libnnls.dylib
-test/libnnls.so
-Manifest.toml
